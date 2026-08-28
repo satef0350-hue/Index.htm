@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -76,7 +77,6 @@
   }
   .card h2{font-size:16px;font-weight:800;margin:0 0 14px;display:flex;align-items:center;gap:8px;}
   
-  /* شريط التوزيع الذكي والمقارنة */
   .comparison-box {
     background: var(--card-warm);
     border-radius: 14px;
@@ -99,7 +99,6 @@
   .catrow:last-child{border-bottom:none;}
   .dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
   .catname{flex:1;font-size:14px;font-weight:700;}
-  .catmini{font-size:11px;color:var(--muted);font-weight:500;}
   .catamt{font-size:14px;font-weight:800;}
   .catpct{font-size:12px;color:var(--muted);width:34px;text-align:left;}
 
@@ -140,7 +139,6 @@
   .page{display:none;}
   .page.active{display:block;}
 
-  /* modal */
   .overlay{
     position:fixed;inset:0;background:rgba(21,58,47,.45);
     display:none;align-items:flex-end;justify-content:center;z-index:100;
@@ -197,7 +195,7 @@
 <body>
 
 <div class="wrap" id="app">
-  <div class="loading" id="loadingMsg">جاري تحميل بياناتك من فايربيز…</div>
+  <div class="loading" id="loadingMsg">جاري التحقق من الحساب...</div>
 </div>
 
 <button class="fab" id="fabAdd" style="display:none;">
@@ -227,11 +225,12 @@
 <div class="overlay" id="overlay"><div class="sheet" id="sheetContent"></div></div>
 <div class="toast" id="toast"></div>
 
-<!-- ربط فايربيز -->
+<!-- ربط فايربيز مع المصادقة (Auth) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-app.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-analytics.js";
   import { getFirestore } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js";
+  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCwQfJ7yu6lkicJsPcpVCDnD1yJWBEZqwU",
@@ -246,7 +245,14 @@
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
   const db = getFirestore(app);
+  const auth = getAuth(app);
+
   window.db = db;
+  window.auth = auth;
+  window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+  window.signOut = signOut;
+  window.onAuthStateChanged = onAuthStateChanged;
 </script>
 
 <script>
@@ -265,6 +271,7 @@ const DEFAULT_ACCOUNTS = [
   {id:'cash', name:'نقدي', initialBalance: 0},
 ];
 
+let currentUser = null;
 let state = {
   salary: 0,
   accounts: DEFAULT_ACCOUNTS,
@@ -273,7 +280,6 @@ let state = {
   monthLabel: '',
 };
 let archiveIndex = [];
-let ready = false;
 
 const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
@@ -294,29 +300,89 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove('show'), 1800);
 }
 
+// مراقبة حالة تسجيل الدخول
+window.addEventListener('DOMContentLoaded', () => {
+  const checkAuthInterval = setInterval(() => {
+    if(window.auth && window.onAuthStateChanged) {
+      clearInterval(checkAuthInterval);
+      window.onAuthStateChanged(window.auth, async (user) => {
+        if(user){
+          currentUser = user;
+          await loadState();
+          render();
+        } else {
+          currentUser = null;
+          renderAuthScreen();
+        }
+      });
+    }
+  }, 100);
+});
+
+function renderAuthScreen(){
+  document.getElementById('fabAdd').style.display = 'none';
+  document.getElementById('tabbar').style.display = 'none';
+  document.getElementById('app').innerHTML = `
+    <div class="card" style="margin-top:40px; text-align:center;">
+      <h2>ميزانيتي الشخصية</h2>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:20px;">الرجاء تسجيل الدخول أو إنشاء حساب جديد للوصول لميزانيتك الخاصة.</p>
+      <div class="field"><label>البريد الإلكتروني</label><input type="email" id="authEmail" placeholder="name@example.com"></div>
+      <div class="field"><label>كلمة المرور</label><input type="password" id="authPassword" placeholder="••••••••"></div>
+      <button class="btn" id="btnLogin">تسجيل الدخول</button>
+      <button class="btn ghost" id="btnRegister" style="margin-top:10px;">إنشاء حساب جديد</button>
+    </div>
+  `;
+
+  document.getElementById('btnLogin').addEventListener('click', async () => {
+    const email = document.getElementById('authEmail').value.trim();
+    const pass = document.getElementById('authPassword').value.trim();
+    if(!email || !pass){ showToast('املأ جميع الحقول'); return; }
+    try{
+      await window.signInWithEmailAndPassword(window.auth, email, pass);
+      showToast('تم تسجيل الدخول بنجاح');
+    }catch(e){
+      showToast('خطأ في البيانات، تأكد منها');
+    }
+  });
+
+  document.getElementById('btnRegister').addEventListener('click', async () => {
+    const email = document.getElementById('authEmail').value.trim();
+    const pass = document.getElementById('authPassword').value.trim();
+    if(!email || !pass){ showToast('املأ جميع الحقول'); return; }
+    try{
+      await window.createUserWithEmailAndPassword(window.auth, email, pass);
+      showToast('تم إنشاء الحساب بنجاح');
+    }catch(e){
+      showToast('خطأ في إنشاء الحساب (كلمة المرور ضعيفة أو الإيميل مستخدم)');
+    }
+  });
+}
+
 async function loadState(){
   try{
     state.monthLabel = currentMonthLabel();
-    if(window.db){
-      const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+    if(window.db && currentUser){
+      const { getDocs, collection, doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
       
-      // جلب العمليات
-      const expSnap = await getDocs(collection(window.db, "expenses"));
+      const uidPath = currentUser.uid;
+
+      // جلب العمليات الخاصة بالمستخدم فقط
+      const expSnap = await getDocs(collection(window.db, "users", uidPath, "expenses"));
       state.expenses = [];
       expSnap.forEach(d => {
         state.expenses.push({ firestoreId: d.id, ...d.data() });
       });
 
-      // جلب الإعدادات (المرتب والحسابات والفئات)
-      const settingsSnap = await getDocs(collection(window.db, "settings"));
+      // جلب إعدادات المستخدم
+      const settingsSnap = await getDocs(collection(window.db, "users", uidPath, "settings"));
       settingsSnap.forEach(d => {
         if(d.id === 'salary') state.salary = d.data().value || 0;
         if(d.id === 'accounts' && d.data().list) state.accounts = d.data().list;
         if(d.id === 'categories' && d.data().list) state.categories = d.data().list;
       });
 
-      // جلب الأرشيف
-      const archSnap = await getDocs(collection(window.db, "archiveIndex"));
+      // جلب أرشيف المستخدم
+      const archSnap = await getDocs(collection(window.db, "users", uidPath, "archiveIndex"));
       archiveIndex = [];
       archSnap.forEach(d => {
         archiveIndex.push(d.data());
@@ -325,20 +391,19 @@ async function loadState(){
   }catch(e){
     console.error('load failed', e);
   }
-  ready = true;
 }
 
 async function saveAccountsToFirebase(){
   try{
     const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
-    await setDoc(doc(window.db, "settings", "accounts"), { list: state.accounts });
+    await setDoc(doc(window.db, "users", currentUser.uid, "settings", "accounts"), { list: state.accounts });
   }catch(e){console.error(e);}
 }
 
 async function saveCategoriesToFirebase(){
   try{
     const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
-    await setDoc(doc(window.db, "settings", "categories"), { list: state.categories });
+    await setDoc(doc(window.db, "users", currentUser.uid, "settings", "categories"), { list: state.categories });
   }catch(e){console.error(e);}
 }
 
@@ -369,10 +434,10 @@ function categoryTotals(){
   return Object.values(map).filter(c=>c.amount>0).sort((a,b)=>b.amount-a.amount);
 }
 
-// ---------- rendering ----------
 let activeTab = 'home';
 
 function render(){
+  if(!currentUser) return;
   const app = document.getElementById('app');
   document.getElementById('fabAdd').style.display = 'flex';
   document.getElementById('tabbar').style.display = 'flex';
@@ -383,8 +448,13 @@ function render(){
         <h1>ميزانيتي</h1>
         <div class="sub">${state.monthLabel}</div>
       </div>
-      <div class="iconbtn" id="btnEndMonth" title="إنهاء الشهر">
-        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
+      <div style="display:flex;gap:8px;">
+        <div class="iconbtn" id="btnLogout" title="تسجيل الخروج">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </div>
+        <div class="iconbtn" id="btnEndMonth" title="إنهاء الشهر">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
+        </div>
       </div>
     </div>
   `;
@@ -624,11 +694,11 @@ function openAddExpenseSheet(){
 
     try {
       const { addDoc, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
-      const docRef = await addDoc(collection(window.db, "expenses"), entry);
+      const docRef = await addDoc(collection(window.db, "users", currentUser.uid, "expenses"), entry);
       state.expenses.push({ firestoreId: docRef.id, ...entry });
       closeSheet();
       render();
-      showToast('تم حفظ العملية سحابياً');
+      showToast('تم حفظ العملية');
     } catch(e) {
       showToast('خطأ في الحفظ');
     }
@@ -693,17 +763,16 @@ function openEndMonthSheet(){
     };
     
     try{
-      const { setDoc, deleteDoc, doc, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
-      await setDoc(doc(window.db, "archives", key), archived);
+      const { setDoc, deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+      await setDoc(doc(window.db, "users", currentUser.uid, "archives", key), archived);
       
       const archItem = {key, label: state.monthLabel, salary: state.salary, totalExpenses: totalExpenses()};
-      await setDoc(doc(window.db, "archiveIndex", key), archItem);
+      await setDoc(doc(window.db, "users", currentUser.uid, "archiveIndex", key), archItem);
       archiveIndex.push(archItem);
 
-      // حذف العمليات القديمة من فايربيز لبدء شهر جديد
       for(const e of state.expenses){
         if(e.firestoreId){
-          await deleteDoc(doc(window.db, "expenses", e.firestoreId));
+          await deleteDoc(doc(window.db, "users", currentUser.uid, "expenses", e.firestoreId));
         }
       }
     }catch(e){console.error(e);}
@@ -721,7 +790,7 @@ async function openArchiveDetail(key){
   let data = null;
   try{
     const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
-    const snap = await getDoc(doc(window.db, "archives", key));
+    const snap = await getDoc(doc(window.db, "users", currentUser.uid, "archives", key));
     if(snap.exists()) data = snap.data();
   }catch(e){}
   if(!data){ showToast('تعذر تحميل بيانات الشهر'); return; }
@@ -745,11 +814,17 @@ function attachHomeEvents(){
   const endBtn = document.getElementById('btnEndMonth');
   if(endBtn) endBtn.addEventListener('click', openEndMonthSheet);
 
+  const logoutBtn = document.getElementById('btnLogout');
+  if(logoutBtn) logoutBtn.addEventListener('click', async () => {
+    await window.signOut(window.auth);
+    showToast('تم تسجيل الخروج');
+  });
+
   document.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', async ()=>{
     const id = b.dataset.del;
     try {
       const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
-      await deleteDoc(doc(window.db, "expenses", id));
+      await deleteDoc(doc(window.db, "users", currentUser.uid, "expenses", id));
       state.expenses = state.expenses.filter(e=>e.firestoreId!==id && e.id!==id);
       render();
       showToast('تم الحذف');
@@ -782,9 +857,9 @@ function attachHomeEvents(){
     state.salary = v;
     try {
       const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
-      await setDoc(doc(window.db, "settings", "salary"), { value: v });
+      await setDoc(doc(window.db, "users", currentUser.uid, "settings", "salary"), { value: v });
       render();
-      showToast('تم حفظ المرتب سحابياً');
+      showToast('تم حفظ المرتب');
     } catch(e) {
       showToast('خطأ في الحفظ');
     }
@@ -806,11 +881,6 @@ document.getElementById('tabbar').addEventListener('click', (e)=>{
   btn.classList.add('active');
   render();
 });
-
-(async function init(){
-  await loadState();
-  render();
-})();
 </script>
 </body>
 </html>
