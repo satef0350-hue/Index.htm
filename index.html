@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -75,9 +76,22 @@
     border:1px solid var(--line);
   }
   .card h2{font-size:16px;font-weight:800;margin:0 0 14px;display:flex;align-items:center;gap:8px;}
-  .barwrap{background:var(--card-warm);border-radius:20px;height:12px;overflow:hidden;margin:10px 0;}
-  .bar{height:100%;background:var(--gold);border-radius:20px;transition:width .4s;}
-  .bar.over{background:var(--red);}
+  
+  /* شريط التوزيع الذكي والمقارنة */
+  .comparison-box {
+    background: var(--card-warm);
+    border-radius: 14px;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--green-deep);
+    margin-bottom: 12px;
+    line-height: 1.6;
+    border-right: 4px solid var(--gold);
+  }
+  
+  .barwrap{background:var(--card-warm);border-radius:20px;height:12px;overflow:hidden;margin:10px 0;display:flex;}
+  .bar-seg{height:100%;transition:width .4s;}
   .barlabels{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-weight:500;}
   .pct{font-size:26px;font-weight:800;color:var(--gold);}
   .pct.over{color:var(--red);}
@@ -164,7 +178,6 @@
   .rowline{display:flex;gap:10px;}
   .rowline>*{flex:1;}
   .smalllink{text-align:center;font-size:12px;color:var(--muted);font-weight:700;margin-top:14px;cursor:pointer;text-decoration:underline;}
-  .addchip{border:1.5px dashed var(--line);background:transparent;}
 
   .archiveitem{
     background:var(--card);border:1px solid var(--line);border-radius:18px;
@@ -228,14 +241,14 @@ const DEFAULT_CATEGORIES = [
   {id:'other', name:'أخرى', color:'#9A8C6E'},
 ];
 const DEFAULT_ACCOUNTS = [
-  {id:'cash', name:'نقدي'},
+  {id:'cash', name:'نقدي', initialBalance: 0},
 ];
 
 let state = {
   salary: 0,
   accounts: DEFAULT_ACCOUNTS,
   categories: DEFAULT_CATEGORIES,
-  expenses: [], // {id, type:'expense'|'income', category, categoryName, account, amount, note, date}
+  expenses: [],
   monthLabel: '',
 };
 let archiveIndex = [];
@@ -266,6 +279,8 @@ async function loadState(){
     if(r && r.value){
       const saved = JSON.parse(r.value);
       state = Object.assign({}, state, saved);
+      // التأكد من وجود خانة initialBalance للحسابات القديمة
+      state.accounts = state.accounts.map(a => ({...a, initialBalance: a.initialBalance || 0}));
       if(!state.monthLabel) state.monthLabel = currentMonthLabel();
     } else {
       state.monthLabel = currentMonthLabel();
@@ -290,7 +305,6 @@ async function saveArchiveIndex(){
   catch(e){ console.error('save failed', e); }
 }
 
-// ---------- computations ----------
 function totalExpenses(){
   return state.expenses.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount),0);
 }
@@ -316,15 +330,6 @@ function categoryTotals(){
     map[e.category].amount += Number(e.amount);
   });
   return Object.values(map).filter(c=>c.amount>0).sort((a,b)=>b.amount-a.amount);
-}
-function accountTotals(){
-  const map = {};
-  state.accounts.forEach(a=>map[a.id]={...a, amount:0});
-  state.expenses.filter(e=>e.type==='expense').forEach(e=>{
-    if(!map[e.account]) map[e.account] = {id:e.account, name:e.accountName||'نقدي', amount:0};
-    map[e.account].amount += Number(e.amount);
-  });
-  return Object.values(map).filter(a=>a.amount>0).sort((a,b)=>b.amount-a.amount);
 }
 
 // ---------- rendering ----------
@@ -363,9 +368,20 @@ function renderHome(){
   const budget = totalBudget();
 
   let catsHtml = '';
-  if(cats.length===0){
+  let comparisonText = 'لا توجد مصروفات مسجلة للمقارنة حالياً.';
+
+  if(cats.length === 0){
     catsHtml = `<div class="empty">لسه معملتش أي عملية الشهر ده.<br>اضغط "إضافة عملية" وابدأ تسجّل مصاريفك.</div>`;
   } else {
+    // تحليل من أعلى من مين في المصاريف
+    if(cats.length === 1){
+      comparisonText = `المصروف بالكامل متركز حالياً في فئة <strong>${cats[0].name}</strong> بنسبة 100%.`;
+    } else {
+      const highest = cats[0];
+      const othersText = cats.slice(1).map(c => `${c.name} (${fmt(c.amount)} ج.م)`).join('، و');
+      comparisonText = `📈 الفئة الأعلى في الصرف هي <strong>${highest.name}</strong> (${fmt(highest.amount)} ج.م)، وهي أعلى من باقي الفئات: ${othersText}.`;
+    }
+
     catsHtml = cats.map(c=>{
       const p = budget>0 ? Math.round((c.amount/budget)*100) : 0;
       return `
@@ -376,6 +392,18 @@ function renderHome(){
         <div class="catpct">${p}%</div>
       </div>`;
     }).join('');
+  }
+
+  // بناء الشريط الملون بناءً على النسب الفعلية
+  let barSegmentsHtml = '';
+  const totalExp = totalExpenses();
+  if(totalExp > 0){
+    cats.forEach(c => {
+      const sharePct = (c.amount / totalExp) * 100;
+      barSegmentsHtml += `<div class="bar-seg" style="width:${sharePct}%; background:${c.color};" title="${c.name}: ${fmt(c.amount)} ج.م"></div>`;
+    });
+  } else {
+    barSegmentsHtml = `<div class="bar-seg" style="width:100%; background:var(--line);"></div>`;
   }
 
   return `
@@ -391,12 +419,13 @@ function renderHome(){
     <div class="card">
       <h2>نسبة الاستخدام من الميزانية</h2>
       <div class="pct ${over?'over':''}">${used}%</div>
-      <div class="barwrap"><div class="bar ${over?'over':''}" style="width:${Math.min(100,used)}%"></div></div>
+      <div class="barwrap">${barSegmentsHtml}</div>
       <div class="barlabels"><span>بداية الشهر</span><span>نهاية الشهر</span></div>
     </div>
 
     <div class="card">
-      <h2>مصروفاتك حسب الفئة</h2>
+      <h2>إلى أين تذهب أموالك؟</h2>
+      <div class="comparison-box">${comparisonText}</div>
       ${catsHtml}
     </div>
   `;
@@ -449,9 +478,12 @@ function renderArchive(){
 
 function renderSettings(){
   const accRows = state.accounts.map(a=>`
-    <div class="catrow"><div class="catname">${a.name}</div>
-    ${state.accounts.length>1?`<button class="txdel" data-delacc="${a.id}">✕</button>`:''}
+    <div class="catrow">
+      <div class="catname">${a.name}</div>
+      <div style="font-size:13px;font-weight:700;color:var(--muted);margin-left:10px;">الرصيد: ${fmt(a.initialBalance || 0)} ج.م</div>
+      ${state.accounts.length>1?`<button class="txdel" data-delacc="${a.id}">✕</button>`:''}
     </div>`).join('');
+
   const catRows = state.categories.map(c=>`
     <div class="catrow"><div class="dot" style="background:${c.color}"></div><div class="catname">${c.name}</div>
     ${!DEFAULT_CATEGORIES.find(d=>d.id===c.id)?`<button class="txdel" data-delcat="${c.id}">✕</button>`:''}
@@ -468,9 +500,9 @@ function renderSettings(){
     </div>
 
     <div class="card">
-      <h2>الحسابات</h2>
+      <h2>الحسابات وأرصدتها</h2>
       ${accRows}
-      <button class="btn ghost" id="btnAddAcc" style="margin-top:10px;">+ إضافة حساب جديد</button>
+      <button class="btn ghost" id="btnAddAcc" style="margin-top:10px;">+ إضافة حساب جديد ورصيده</button>
     </div>
 
     <div class="card">
@@ -481,7 +513,6 @@ function renderSettings(){
   `;
 }
 
-// ---------- sheet / modal ----------
 function openSheet(html){
   document.getElementById('sheetContent').innerHTML = html;
   document.getElementById('overlay').classList.add('show');
@@ -565,18 +596,20 @@ function openAddExpenseSheet(){
 
 function openAddAccountSheet(){
   openSheet(`
-    <h3>حساب جديد</h3>
-    <div class="field"><label>اسم الحساب</label><input type="text" id="accNameInput" placeholder="مثال: حساب البنك الأهلي"></div>
-    <button class="btn" id="btnSaveAcc">إضافة</button>
+    <h3>إضافة حساب جديد ورصيده</h3>
+    <div class="field"><label>اسم الحساب</label><input type="text" id="accNameInput" placeholder="مثال: البنك الأهلي / كارت محفظة"></div>
+    <div class="field"><label>المبلغ أو الرصيد الموجود فيه (ج.م)</label><input type="number" id="accBalanceInput" placeholder="0" inputmode="decimal"></div>
+    <button class="btn" id="btnSaveAcc">حفظ الحساب</button>
     <div class="smalllink" id="btnCancelSheet">إلغاء</div>
   `);
   document.getElementById('btnCancelSheet').addEventListener('click', closeSheet);
   document.getElementById('btnSaveAcc').addEventListener('click', async ()=>{
     const name = document.getElementById('accNameInput').value.trim();
+    const balance = parseFloat(document.getElementById('accBalanceInput').value) || 0;
     if(!name){ showToast('اكتب اسم الحساب'); return; }
-    state.accounts.push({id: uid(), name});
+    state.accounts.push({id: uid(), name, initialBalance: balance});
     await saveState();
-    closeSheet(); render(); showToast('تم إضافة الحساب');
+    closeSheet(); render(); showToast('تم إضافة الحساب بنجاح');
   });
 }
 
@@ -654,7 +687,6 @@ async function openArchiveDetail(key){
   document.getElementById('btnCancelSheet').addEventListener('click', closeSheet);
 }
 
-// ---------- events ----------
 function attachHomeEvents(){
   const endBtn = document.getElementById('btnEndMonth');
   if(endBtn) endBtn.addEventListener('click', openEndMonthSheet);
