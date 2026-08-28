@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -253,6 +254,7 @@
   window.sendPasswordResetEmail = sendPasswordResetEmail;
   window.signOut = signOut;
   window.onAuthStateChanged = onAuthStateChanged;
+  window.__firebaseReady = true;
 </script>
 
 <script>
@@ -300,23 +302,39 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove('show'), 1800);
 }
 
-// مراقبة حالة تسجيل الدخول وتوجيه المستخدم للشاشات المناسبة
+// مراقبة حالة تسجيل الدخول بضمان عدم التعليق نهائياً
 window.addEventListener('DOMContentLoaded', () => {
+  let authChecked = false;
+
   const checkAuthInterval = setInterval(() => {
     if(window.auth && window.onAuthStateChanged) {
-      clearInterval(checkAuthInterval);
       window.onAuthStateChanged(window.auth, async (user) => {
+        if(authChecked) return;
+        authChecked = true;
+        clearInterval(checkAuthInterval);
+        
         if(user){
           currentUser = user;
           await loadState();
           render();
         } else {
           currentUser = null;
-          renderLoginScreen(); // عرض شاشة تسجيل الدخول أولاً
+          renderLoginScreen();
         }
       });
     }
   }, 100);
+
+  // حماية إضافية: لو فايربيز اتأخر لأي سبب (نت ضعيف مثلاً)، افتح شاشة تسجيل الدخول بعد ثانيتين تلقائياً
+  setTimeout(() => {
+    if(!authChecked) {
+      authChecked = true;
+      clearInterval(checkAuthInterval);
+      if(!currentUser) {
+        renderLoginScreen();
+      }
+    }
+  }, 2000);
 });
 
 // 1. شاشة تسجيل الدخول
@@ -351,7 +369,7 @@ function renderLoginScreen(){
   document.getElementById('linkToRegister').addEventListener('click', renderRegisterScreen);
 }
 
-// 2. شاشة إنشاء حساب جديد وتحديد الباسورد
+// 2. شاشة إنشاء حساب جديد
 function renderRegisterScreen(){
   document.getElementById('app').innerHTML = `
     <div class="card" style="margin-top:40px; text-align:center;">
@@ -379,7 +397,7 @@ function renderRegisterScreen(){
   document.getElementById('linkBackLogin').addEventListener('click', renderLoginScreen);
 }
 
-// 3. شاشة استرجاع وتعديل كلمة المرور (نسيت كلمة المرور)
+// 3. شاشة استرجاع وتعديل كلمة المرور
 function renderForgotScreen(){
   document.getElementById('app').innerHTML = `
     <div class="card" style="margin-top:40px; text-align:center;">
