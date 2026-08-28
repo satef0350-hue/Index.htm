@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -198,7 +197,7 @@
 <body>
 
 <div class="wrap" id="app">
-  <div class="loading" id="loadingMsg">جاري تحميل بياناتك…</div>
+  <div class="loading" id="loadingMsg">جاري تحميل بياناتك من فايربيز…</div>
 </div>
 
 <button class="fab" id="fabAdd" style="display:none;">
@@ -227,6 +226,28 @@
 
 <div class="overlay" id="overlay"><div class="sheet" id="sheetContent"></div></div>
 <div class="toast" id="toast"></div>
+
+<!-- ربط فايربيز -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-analytics.js";
+  import { getFirestore } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCwQfJ7yu6lkicJsPcpVCDnD1yJWBEZqwU",
+    authDomain: "budget-d497d.firebaseapp.com",
+    projectId: "budget-d497d",
+    storageBucket: "budget-d497d.appspot.com",
+    messagingSenderId: "99785002845",
+    appId: "1:99785002845:web:4b572c0192e864df62b4",
+    measurementId: "G-DEJP5QLJF8"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const db = getFirestore(app);
+  window.db = db;
+</script>
 
 <script>
 const DEFAULT_CATEGORIES = [
@@ -275,34 +296,50 @@ function showToast(msg){
 
 async function loadState(){
   try{
-    const r = await window.storage.get('budget-state');
-    if(r && r.value){
-      const saved = JSON.parse(r.value);
-      state = Object.assign({}, state, saved);
-      // التأكد من وجود خانة initialBalance للحسابات القديمة
-      state.accounts = state.accounts.map(a => ({...a, initialBalance: a.initialBalance || 0}));
-      if(!state.monthLabel) state.monthLabel = currentMonthLabel();
-    } else {
-      state.monthLabel = currentMonthLabel();
-      await saveState();
+    state.monthLabel = currentMonthLabel();
+    if(window.db){
+      const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+      
+      // جلب العمليات
+      const expSnap = await getDocs(collection(window.db, "expenses"));
+      state.expenses = [];
+      expSnap.forEach(d => {
+        state.expenses.push({ firestoreId: d.id, ...d.data() });
+      });
+
+      // جلب الإعدادات (المرتب والحسابات والفئات)
+      const settingsSnap = await getDocs(collection(window.db, "settings"));
+      settingsSnap.forEach(d => {
+        if(d.id === 'salary') state.salary = d.data().value || 0;
+        if(d.id === 'accounts' && d.data().list) state.accounts = d.data().list;
+        if(d.id === 'categories' && d.data().list) state.categories = d.data().list;
+      });
+
+      // جلب الأرشيف
+      const archSnap = await getDocs(collection(window.db, "archiveIndex"));
+      archiveIndex = [];
+      archSnap.forEach(d => {
+        archiveIndex.push(d.data());
+      });
     }
   }catch(e){
-    state.monthLabel = currentMonthLabel();
+    console.error('load failed', e);
   }
-  try{
-    const r2 = await window.storage.get('budget-archive-index');
-    if(r2 && r2.value) archiveIndex = JSON.parse(r2.value);
-  }catch(e){ archiveIndex = []; }
   ready = true;
 }
 
-async function saveState(){
-  try{ await window.storage.set('budget-state', JSON.stringify(state)); }
-  catch(e){ console.error('save failed', e); }
+async function saveAccountsToFirebase(){
+  try{
+    const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+    await setDoc(doc(window.db, "settings", "accounts"), { list: state.accounts });
+  }catch(e){console.error(e);}
 }
-async function saveArchiveIndex(){
-  try{ await window.storage.set('budget-archive-index', JSON.stringify(archiveIndex)); }
-  catch(e){ console.error('save failed', e); }
+
+async function saveCategoriesToFirebase(){
+  try{
+    const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+    await setDoc(doc(window.db, "settings", "categories"), { list: state.categories });
+  }catch(e){console.error(e);}
 }
 
 function totalExpenses(){
@@ -373,7 +410,6 @@ function renderHome(){
   if(cats.length === 0){
     catsHtml = `<div class="empty">لسه معملتش أي عملية الشهر ده.<br>اضغط "إضافة عملية" وابدأ تسجّل مصاريفك.</div>`;
   } else {
-    // تحليل من أعلى من مين في المصاريف
     if(cats.length === 1){
       comparisonText = `المصروف بالكامل متركز حالياً في فئة <strong>${cats[0].name}</strong> بنسبة 100%.`;
     } else {
@@ -394,7 +430,6 @@ function renderHome(){
     }).join('');
   }
 
-  // بناء الشريط الملون بناءً على النسب الفعلية
   let barSegmentsHtml = '';
   const totalExp = totalExpenses();
   if(totalExp > 0){
@@ -432,7 +467,7 @@ function renderHome(){
 }
 
 function renderTx(){
-  const list = [...state.expenses].sort((a,b)=> (b.date||'').localeCompare(a.date||'') || b.id.localeCompare(a.id));
+  const list = [...state.expenses].sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.id||'').localeCompare(a.id||''));
   let rows = '';
   if(list.length===0){
     rows = `<div class="empty">مفيش عمليات مسجّلة لسه.</div>`;
@@ -448,7 +483,7 @@ function renderTx(){
           <div class="txmeta">${e.categoryName}${acc?' · '+acc.name:''}${e.date?' · '+e.date:''}</div>
         </div>
         <div class="txamt ${isIncome?'plus':'minus'}">${isIncome?'+':'-'} ${fmt(e.amount)}</div>
-        <button class="txdel" data-del="${e.id}">✕</button>
+        <button class="txdel" data-del="${e.firestoreId || e.id}">✕</button>
       </div>`;
     }).join('');
   }
@@ -586,11 +621,17 @@ function openAddExpenseSheet(){
       account: selAcc, accountName: selAccName,
       amount: amt, note, date: new Date().toISOString().slice(0,10),
     };
-    state.expenses.push(entry);
-    await saveState();
-    closeSheet();
-    render();
-    showToast('تم حفظ العملية');
+
+    try {
+      const { addDoc, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+      const docRef = await addDoc(collection(window.db, "expenses"), entry);
+      state.expenses.push({ firestoreId: docRef.id, ...entry });
+      closeSheet();
+      render();
+      showToast('تم حفظ العملية سحابياً');
+    } catch(e) {
+      showToast('خطأ في الحفظ');
+    }
   });
 }
 
@@ -608,7 +649,7 @@ function openAddAccountSheet(){
     const balance = parseFloat(document.getElementById('accBalanceInput').value) || 0;
     if(!name){ showToast('اكتب اسم الحساب'); return; }
     state.accounts.push({id: uid(), name, initialBalance: balance});
-    await saveState();
+    await saveAccountsToFirebase();
     closeSheet(); render(); showToast('تم إضافة الحساب بنجاح');
   });
 }
@@ -627,7 +668,7 @@ function openAddCategorySheet(){
     const name = document.getElementById('catNameInput').value.trim();
     if(!name){ showToast('اكتب اسم الفئة'); return; }
     state.categories.push({id: uid(), name, color});
-    await saveState();
+    await saveCategoriesToFirebase();
     closeSheet(); render(); showToast('تم إضافة الفئة');
   });
 }
@@ -637,7 +678,7 @@ function openEndMonthSheet(){
   openSheet(`
     <h3>إنهاء الشهر وأرشفته</h3>
     <div class="field" style="background:var(--card-warm);padding:14px;border-radius:14px;font-size:13px;line-height:1.9;">
-      هيتم حفظ "${state.monthLabel}" في الأرشيف بإجمالي مصروف ${fmt(used)} ج.م، وهيتصفّر العمليات عشان تبدأ شهر جديد. مرتبك الحالي (${fmt(state.salary)}) هيفضل زي ما هو، وتقدر تعدّله من الإعدادات.
+      هيتم حفظ "${state.monthLabel}" في الأرشيف بإجمالي مصروف ${fmt(used)} ج.م، وهيتصفّر العمليات عشان تبدأ شهر جديد. مرتبك الحالي (${fmt(state.salary)}) هيفضل زي ما هو.
     </div>
     <button class="btn" id="btnConfirmEnd">تأكيد الأرشفة وبدء شهر جديد</button>
     <div class="smalllink" id="btnCancelSheet">إلغاء</div>
@@ -650,13 +691,25 @@ function openEndMonthSheet(){
       totalExpenses: totalExpenses(), totalIncomeExtra: totalIncomeExtra(),
       expenses: state.expenses, categoryTotals: categoryTotals(),
     };
-    try{ await window.storage.set('budget-archive-'+key, JSON.stringify(archived)); }catch(e){}
-    archiveIndex.push({key, label: state.monthLabel, salary: state.salary, totalExpenses: totalExpenses()});
-    await saveArchiveIndex();
+    
+    try{
+      const { setDoc, deleteDoc, doc, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+      await setDoc(doc(window.db, "archives", key), archived);
+      
+      const archItem = {key, label: state.monthLabel, salary: state.salary, totalExpenses: totalExpenses()};
+      await setDoc(doc(window.db, "archiveIndex", key), archItem);
+      archiveIndex.push(archItem);
+
+      // حذف العمليات القديمة من فايربيز لبدء شهر جديد
+      for(const e of state.expenses){
+        if(e.firestoreId){
+          await deleteDoc(doc(window.db, "expenses", e.firestoreId));
+        }
+      }
+    }catch(e){console.error(e);}
 
     state.expenses = [];
     state.monthLabel = currentMonthLabel();
-    await saveState();
     closeSheet();
     activeTab = 'home';
     render();
@@ -667,8 +720,9 @@ function openEndMonthSheet(){
 async function openArchiveDetail(key){
   let data = null;
   try{
-    const r = await window.storage.get('budget-archive-'+key);
-    if(r && r.value) data = JSON.parse(r.value);
+    const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+    const snap = await getDoc(doc(window.db, "archives", key));
+    if(snap.exists()) data = snap.data();
   }catch(e){}
   if(!data){ showToast('تعذر تحميل بيانات الشهر'); return; }
   const cats = (data.categoryTotals||[]).map(c=>`
@@ -693,26 +747,49 @@ function attachHomeEvents(){
 
   document.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', async ()=>{
     const id = b.dataset.del;
-    state.expenses = state.expenses.filter(e=>e.id!==id);
-    await saveState(); render(); showToast('تم الحذف');
+    try {
+      const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+      await deleteDoc(doc(window.db, "expenses", id));
+      state.expenses = state.expenses.filter(e=>e.firestoreId!==id && e.id!==id);
+      render();
+      showToast('تم الحذف');
+    } catch(e) {
+      showToast('تعذر الحذف');
+    }
   }));
+
   document.querySelectorAll('[data-archive]').forEach(el=>el.addEventListener('click', ()=>{
     openArchiveDetail(el.dataset.archive);
   }));
+
   document.querySelectorAll('[data-delacc]').forEach(b=>b.addEventListener('click', async ()=>{
     state.accounts = state.accounts.filter(a=>a.id!==b.dataset.delacc);
-    await saveState(); render(); showToast('تم الحذف');
+    await saveAccountsToFirebase();
+    render();
+    showToast('تم الحذف');
   }));
+
   document.querySelectorAll('[data-delcat]').forEach(b=>b.addEventListener('click', async ()=>{
     state.categories = state.categories.filter(c=>c.id!==b.dataset.delcat);
-    await saveState(); render(); showToast('تم الحذف');
+    await saveCategoriesToFirebase();
+    render();
+    showToast('تم الحذف');
   }));
+
   const btnSaveSalary = document.getElementById('btnSaveSalary');
   if(btnSaveSalary) btnSaveSalary.addEventListener('click', async ()=>{
     const v = parseFloat(document.getElementById('salaryInput').value) || 0;
     state.salary = v;
-    await saveState(); render(); showToast('تم حفظ المرتب');
+    try {
+      const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+      await setDoc(doc(window.db, "settings", "salary"), { value: v });
+      render();
+      showToast('تم حفظ المرتب سحابياً');
+    } catch(e) {
+      showToast('خطأ في الحفظ');
+    }
   });
+
   const btnAddAcc = document.getElementById('btnAddAcc');
   if(btnAddAcc) btnAddAcc.addEventListener('click', openAddAccountSheet);
   const btnAddCat = document.getElementById('btnAddCat');
@@ -735,27 +812,5 @@ document.getElementById('tabbar').addEventListener('click', (e)=>{
   render();
 })();
 </script>
-  <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-analytics.js";
-  import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCwQfJ7yu6lkicJsPcpVCDnD1yJWBEZqwU",
-    authDomain: "budget-d497d.firebaseapp.com",
-    projectId: "budget-d497d",
-    storageBucket: "budget-d497d.appspot.com",
-    messagingSenderId: "99785002845",
-    appId: "1:99785002845:web:4b572c0192e864df62b4",
-    measurementId: "G-DEJP5QLJF8"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-  
-  // قاعدة البيانات بقت جاهزة وتشتغل في الخلفية
-  const db = getFirestore(app);
-  window.db = db;
-  </script>
 </body>
 </html>
