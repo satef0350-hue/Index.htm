@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -230,7 +229,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-app.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-analytics.js";
   import { getFirestore } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js";
-  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-auth.js";
+  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCwQfJ7yu6lkicJsPcpVCDnD1yJWBEZqwU",
@@ -251,6 +250,7 @@
   window.auth = auth;
   window.signInWithEmailAndPassword = signInWithEmailAndPassword;
   window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+  window.sendPasswordResetEmail = sendPasswordResetEmail;
   window.signOut = signOut;
   window.onAuthStateChanged = onAuthStateChanged;
 </script>
@@ -300,7 +300,7 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove('show'), 1800);
 }
 
-// مراقبة حالة تسجيل الدخول
+// مراقبة حالة تسجيل الدخول وتوجيه المستخدم للشاشات المناسبة
 window.addEventListener('DOMContentLoaded', () => {
   const checkAuthInterval = setInterval(() => {
     if(window.auth && window.onAuthStateChanged) {
@@ -312,24 +312,26 @@ window.addEventListener('DOMContentLoaded', () => {
           render();
         } else {
           currentUser = null;
-          renderAuthScreen();
+          renderLoginScreen(); // عرض شاشة تسجيل الدخول أولاً
         }
       });
     }
   }, 100);
 });
 
-function renderAuthScreen(){
+// 1. شاشة تسجيل الدخول
+function renderLoginScreen(){
   document.getElementById('fabAdd').style.display = 'none';
   document.getElementById('tabbar').style.display = 'none';
   document.getElementById('app').innerHTML = `
     <div class="card" style="margin-top:40px; text-align:center;">
-      <h2>ميزانيتي الشخصية</h2>
-      <p style="font-size:13px; color:var(--muted); margin-bottom:20px;">الرجاء تسجيل الدخول أو إنشاء حساب جديد للوصول لميزانيتك الخاصة.</p>
+      <h2>تسجيل الدخول</h2>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:20px;">أدخل بريدك الإلكتروني وكلمة المرور للمتابعة.</p>
       <div class="field"><label>البريد الإلكتروني</label><input type="email" id="authEmail" placeholder="name@example.com"></div>
       <div class="field"><label>كلمة المرور</label><input type="password" id="authPassword" placeholder="••••••••"></div>
-      <button class="btn" id="btnLogin">تسجيل الدخول</button>
-      <button class="btn ghost" id="btnRegister" style="margin-top:10px;">إنشاء حساب جديد</button>
+      <button class="btn" id="btnLogin">دخول</button>
+      <div class="smalllink" id="linkForgot">نسيت كلمة المرور؟</div>
+      <div class="smalllink" id="linkToRegister" style="margin-top:20px; color:var(--green); font-weight:800;">ليس لديك حساب؟ إنشاء حساب جديد</div>
     </div>
   `;
 
@@ -345,35 +347,79 @@ function renderAuthScreen(){
     }
   });
 
+  document.getElementById('linkForgot').addEventListener('click', renderForgotScreen);
+  document.getElementById('linkToRegister').addEventListener('click', renderRegisterScreen);
+}
+
+// 2. شاشة إنشاء حساب جديد وتحديد الباسورد
+function renderRegisterScreen(){
+  document.getElementById('app').innerHTML = `
+    <div class="card" style="margin-top:40px; text-align:center;">
+      <h2>إنشاء حساب جديد</h2>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:20px;">قم بتسجيل حسابك وتحديد كلمة المرور الخاصة بك.</p>
+      <div class="field"><label>البريد الإلكتروني</label><input type="email" id="regEmail" placeholder="name@example.com"></div>
+      <div class="field"><label>تحديد كلمة المرور</label><input type="password" id="regPassword" placeholder="••••••••"></div>
+      <button class="btn" id="btnRegister">تسجيل الحساب</button>
+      <div class="smalllink" id="linkBackLogin" style="margin-top:20px;">لديك حساب بالفعل؟ تسجيل الدخول</div>
+    </div>
+  `;
+
   document.getElementById('btnRegister').addEventListener('click', async () => {
-    const email = document.getElementById('authEmail').value.trim();
-    const pass = document.getElementById('authPassword').value.trim();
+    const email = document.getElementById('regEmail').value.trim();
+    const pass = document.getElementById('regPassword').value.trim();
     if(!email || !pass){ showToast('املأ جميع الحقول'); return; }
     try{
       await window.createUserWithEmailAndPassword(window.auth, email, pass);
       showToast('تم إنشاء الحساب بنجاح');
     }catch(e){
-      showToast('خطأ في إنشاء الحساب (كلمة المرور ضعيفة أو الإيميل مستخدم)');
+      showToast('خطأ: كلمة المرور ضعيفة أو الإيميل مستخدم مسبقاً');
     }
   });
+
+  document.getElementById('linkBackLogin').addEventListener('click', renderLoginScreen);
+}
+
+// 3. شاشة استرجاع وتعديل كلمة المرور (نسيت كلمة المرور)
+function renderForgotScreen(){
+  document.getElementById('app').innerHTML = `
+    <div class="card" style="margin-top:40px; text-align:center;">
+      <h2>استرجاع كلمة المرور</h2>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:20px;">أدخل بريدك الإلكتروني وسنرسل لك رابطاً لإعادة تعيين وتعديل كلمة المرور.</p>
+      <div class="field"><label>البريد الإلكتروني</label><input type="email" id="forgotEmail" placeholder="name@example.com"></div>
+      <button class="btn" id="btnSendReset">إرسال رابط التعديل</button>
+      <div class="smalllink" id="linkBackLogin" style="margin-top:20px;">العودة لتسجيل الدخول</div>
+    </div>
+  `;
+
+  document.getElementById('btnSendReset').addEventListener('click', async () => {
+    const email = document.getElementById('forgotEmail').value.trim();
+    if(!email){ showToast('اكتب البريد الإلكتروني'); return; }
+    try{
+      await window.sendPasswordResetEmail(window.auth, email);
+      showToast('تم إرسال رابط تعديل كلمة المرور إلى بريدك');
+      renderLoginScreen();
+    }catch(e){
+      showToast('فشل الإرسال، تأكد من صحة البريد');
+    }
+  });
+
+  document.getElementById('linkBackLogin').addEventListener('click', renderLoginScreen);
 }
 
 async function loadState(){
   try{
     state.monthLabel = currentMonthLabel();
     if(window.db && currentUser){
-      const { getDocs, collection, doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+      const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
       
       const uidPath = currentUser.uid;
 
-      // جلب العمليات الخاصة بالمستخدم فقط
       const expSnap = await getDocs(collection(window.db, "users", uidPath, "expenses"));
       state.expenses = [];
       expSnap.forEach(d => {
         state.expenses.push({ firestoreId: d.id, ...d.data() });
       });
 
-      // جلب إعدادات المستخدم
       const settingsSnap = await getDocs(collection(window.db, "users", uidPath, "settings"));
       settingsSnap.forEach(d => {
         if(d.id === 'salary') state.salary = d.data().value || 0;
@@ -381,7 +427,6 @@ async function loadState(){
         if(d.id === 'categories' && d.data().list) state.categories = d.data().list;
       });
 
-      // جلب أرشيف المستخدم
       const archSnap = await getDocs(collection(window.db, "users", uidPath, "archiveIndex"));
       archiveIndex = [];
       archSnap.forEach(d => {
