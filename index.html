@@ -736,11 +736,10 @@ document.getElementById('tabbar').addEventListener('click', (e)=>{
 })();
 </script>
   <script type="module">
-  // Import the functions you need from the SDKs you need
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-app.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-analytics.js";
+  import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js";
 
-  // Your web app's Firebase configuration
   const firebaseConfig = {
     apiKey: "AIzaSyCwQfJ7yu6lkicJsPcpVCDnD1yJWBEZqwU",
     authDomain: "budget-d497d.firebaseapp.com",
@@ -751,9 +750,12 @@ document.getElementById('tabbar').addEventListener('click', (e)=>{
     measurementId: "G-DEJP5QLJF8"
   };
 
-  // Initialize Firebase
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
+  
+  // قاعدة البيانات بقت جاهزة وتشتغل في الخلفية
+  const db = getFirestore(app);
+  window.db = db;
   </script>
 </body>
 </html>
