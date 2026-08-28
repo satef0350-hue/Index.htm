@@ -735,5 +735,25 @@ document.getElementById('tabbar').addEventListener('click', (e)=>{
   render();
 })();
 </script>
+  <script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-analytics.js";
+
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyCwQfJ7yu6lkicJsPcpVCDnD1yJWBEZqwU",
+    authDomain: "budget-d497d.firebaseapp.com",
+    projectId: "budget-d497d",
+    storageBucket: "budget-d497d.appspot.com",
+    messagingSenderId: "99785002845",
+    appId: "1:99785002845:web:4b572c0192e864df62b4",
+    measurementId: "G-DEJP5QLJF8"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  </script>
 </body>
 </html>
