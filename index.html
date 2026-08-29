@@ -227,12 +227,12 @@
 <div class="overlay" id="overlay"><div class="sheet" id="sheetContent"></div></div>
 <div class="toast" id="toast"></div>
 
-<!-- ربط فايربيز مع المصادقة (Auth) بالنسخة المحدثة المستقرة -->
+<!-- ربط فايربيز مع المصادقة (Auth) -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
-  import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-analytics.js";
+  import { getFirestore } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js";
+  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCwQfJ7yu6lkicJsPcpVCDnD1yJWBEZqwU",
@@ -312,6 +312,7 @@ setTimeout(() => {
 
 document.addEventListener('click', (e) => {
   if(e.target && e.target.id === 'btnForceOpen'){
+    // الدخول القسري كمستخدم افتراضي محلي لو فايربيز مش شغال
     currentUser = { uid: 'local_user_guest' };
     state.monthLabel = currentMonthLabel();
     render();
@@ -319,15 +320,18 @@ document.addEventListener('click', (e) => {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
-  let authChecked = false;
+  let initialCheckDone = false;
+  let listenerAttached = false;
 
   const checkAuthInterval = setInterval(() => {
-    if(window.auth && window.onAuthStateChanged) {
+    if(window.auth && window.onAuthStateChanged && !listenerAttached) {
+      listenerAttached = true;
+      clearInterval(checkAuthInterval);
+
+      // هذا الـ listener بيفضل شغال طول عمر الصفحة، وكل مرة حالة الدخول تتغير
+      // (دخول، خروج، انتهاء الجلسة...) بيحصّل التحديث المناسب من غير أي شرط يوقفه
       window.onAuthStateChanged(window.auth, async (user) => {
-        if(authChecked) return;
-        authChecked = true;
-        clearInterval(checkAuthInterval);
-        
+        initialCheckDone = true;
         if(user){
           currentUser = user;
           await loadState();
@@ -341,8 +345,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }, 100);
 
   setTimeout(() => {
-    if(!authChecked) {
-      authChecked = true;
+    if(!initialCheckDone) {
       clearInterval(checkAuthInterval);
       if(!currentUser) {
         renderLoginScreen();
@@ -440,7 +443,7 @@ async function loadState(){
   try{
     state.monthLabel = currentMonthLabel();
     if(window.db && currentUser && currentUser.uid !== 'local_user_guest'){
-      const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
       const uidPath = currentUser.uid;
 
       const expSnap = await getDocs(collection(window.db, "users", uidPath, "expenses"));
@@ -466,7 +469,7 @@ async function loadState(){
 async function saveAccountsToFirebase(){
   if(!window.db || !currentUser || currentUser.uid === 'local_user_guest') return;
   try{
-    const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
     await setDoc(doc(window.db, "users", currentUser.uid, "settings", "accounts"), { list: state.accounts });
   }catch(e){}
 }
@@ -474,7 +477,7 @@ async function saveAccountsToFirebase(){
 async function saveCategoriesToFirebase(){
   if(!window.db || !currentUser || currentUser.uid === 'local_user_guest') return;
   try{
-    const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
     await setDoc(doc(window.db, "users", currentUser.uid, "settings", "categories"), { list: state.categories });
   }catch(e){}
 }
@@ -550,14 +553,14 @@ function renderHome(){
   let comparisonText = 'لا توجد مصروفات مسجلة للمقارنة حالياً.';
 
   if(cats.length === 0){
-    catsHtml = `<div class="empty">لسه معملتش أي عملية الشهر ده.<br>اضغط "إضافة عملية" وابدأ تسجّل مصاريفك.</div>`;
+    catsHtml = <div class="empty">لسه معملتش أي عملية الشهر ده.<br>اضغط "إضافة عملية" وابدأ تسجّل مصاريفك.</div>;
   } else {
     if(cats.length === 1){
-      comparisonText = `المصروف بالكامل متركز حالياً في فئة <strong>${cats[0].name}</strong> بنسبة 100%.`;
+      comparisonText = المصروف بالكامل متركز حالياً في فئة <strong>${cats[0].name}</strong> بنسبة 100%.;
     } else {
       const highest = cats[0];
-      const othersText = cats.slice(1).map(c => `${c.name} (${fmt(c.amount)} ج.م)`).join('، و');
-      comparisonText = `📈 الفئة الأعلى في الصرف هي <strong>${highest.name}</strong> (${fmt(highest.amount)} ج.م)، وهي أعلى من باقي الفئات: ${othersText}.`;
+      const othersText = cats.slice(1).map(c => ${c.name} (${fmt(c.amount)} ج.م)).join('، و');
+      comparisonText = 📈 الفئة الأعلى في الصرف هي <strong>${highest.name}</strong> (${fmt(highest.amount)} ج.م)، وهي أعلى من باقي الفئات: ${othersText}.;
     }
 
     catsHtml = cats.map(c=>{
@@ -577,10 +580,10 @@ function renderHome(){
   if(totalExp > 0){
     cats.forEach(c => {
       const sharePct = (c.amount / totalExp) * 100;
-      barSegmentsHtml += `<div class="bar-seg" style="width:${sharePct}%; background:${c.color};" title="${c.name}: ${fmt(c.amount)} ج.م"></div>`;
+      barSegmentsHtml += <div class="bar-seg" style="width:${sharePct}%; background:${c.color};" title="${c.name}: ${fmt(c.amount)} ج.م"></div>;
     });
   } else {
-    barSegmentsHtml = `<div class="bar-seg" style="width:100%; background:var(--line);"></div>`;
+    barSegmentsHtml = <div class="bar-seg" style="width:100%; background:var(--line);"></div>;
   }
 
   return `
@@ -612,7 +615,7 @@ function renderTx(){
   const list = [...state.expenses].sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.id||'').localeCompare(a.id||''));
   let rows = '';
   if(list.length===0){
-    rows = `<div class="empty">مفيش عمليات مسجّلة لسه.</div>`;
+    rows = <div class="empty">مفيش عمليات مسجّلة لسه.</div>;
   } else {
     rows = list.map(e=>{
       const isIncome = e.type==='income';
@@ -629,7 +632,7 @@ function renderTx(){
       </div>`;
     }).join('');
   }
-  return `<div class="card"><h2>كل العمليات (${list.length})</h2>${rows}</div>`;
+  return <div class="card"><h2>كل العمليات (${list.length})</h2>${rows}</div>;
 }
 
 function catIcon(catId){
@@ -639,7 +642,7 @@ function catIcon(catId){
 
 function renderArchive(){
   if(archiveIndex.length===0){
-    return `<div class="card"><h2>الأرشيف</h2><div class="empty">لسه معندكش شهور مؤرشفة.</div></div>`;
+    return <div class="card"><h2>الأرشيف</h2><div class="empty">لسه معندكش شهور مؤرشفة.</div></div>;
   }
   const items = [...archiveIndex].reverse().map(m=>`
     <div class="archiveitem" data-archive="${m.key}">
@@ -647,7 +650,7 @@ function renderArchive(){
       <div class="stats"><span>المرتب: ${fmt(m.salary)}</span><span>المتبقي: ${fmt(m.salary - m.totalExpenses)}</span></div>
     </div>
   `).join('');
-  return `<div class="card"><h2>الشهور المؤرشفة</h2>${items}</div>`;
+  return <div class="card"><h2>الشهور المؤرشفة</h2>${items}</div>;
 }
 
 function renderSettings(){
@@ -655,12 +658,12 @@ function renderSettings(){
     <div class="catrow">
       <div class="catname">${a.name}</div>
       <div style="font-size:13px;font-weight:700;color:var(--muted);margin-left:10px;">الرصيد: ${fmt(a.initialBalance || 0)} ج.م</div>
-      ${state.accounts.length>1?`<button class="txdel" data-delacc="${a.id}">✕</button>`:''}
+      ${state.accounts.length>1?<button class="txdel" data-delacc="${a.id}">✕</button>:''}
     </div>`).join('');
 
   const catRows = state.categories.map(c=>`
     <div class="catrow"><div class="dot" style="background:${c.color}"></div><div class="catname">${c.name}</div>
-    ${!DEFAULT_CATEGORIES.find(d=>d.id===c.id)?`<button class="txdel" data-delcat="${c.id}">✕</button>`:''}
+    ${!DEFAULT_CATEGORIES.find(d=>d.id===c.id)?<button class="txdel" data-delcat="${c.id}">✕</button>:''}
     </div>`).join('');
 
   return `
@@ -683,8 +686,8 @@ function closeSheet(){
 }
 
 function openAddExpenseSheet(){
-  const catChips = state.categories.map(c=>`<button class="chip" data-cat="${c.id}" data-catname="${c.name}">${c.name}</button>`).join('');
-  const accChips = state.accounts.map(a=>`<button class="chip" data-acc="${a.id}" data-accname="${a.name}">${a.name}</button>`).join('');
+  const catChips = state.categories.map(c=><button class="chip" data-cat="${c.id}" data-catname="${c.name}">${c.name}</button>).join('');
+  const accChips = state.accounts.map(a=><button class="chip" data-acc="${a.id}" data-accname="${a.name}">${a.name}</button>).join('');
   openSheet(`
     <h3>إضافة عملية</h3>
     <div class="rowline" style="margin-bottom:16px;">
@@ -737,7 +740,7 @@ function openAddExpenseSheet(){
 
     try {
       if(window.db && currentUser && currentUser.uid !== 'local_user_guest'){
-        const { addDoc, collection } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { addDoc, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
         const docRef = await addDoc(collection(window.db, "users", currentUser.uid, "expenses"), entry);
         entry.firestoreId = docRef.id;
       }
@@ -808,7 +811,7 @@ function openEndMonthSheet(){
     
     try{
       if(window.db && currentUser && currentUser.uid !== 'local_user_guest'){
-        const { setDoc, deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { setDoc, deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
         await setDoc(doc(window.db, "users", currentUser.uid, "archives", key), archived);
         const archItem = {key, label: state.monthLabel, salary: state.salary, totalExpenses: totalExpenses()};
         await setDoc(doc(window.db, "users", currentUser.uid, "archiveIndex", key), archItem);
@@ -847,7 +850,7 @@ function attachHomeEvents(){
     const id = b.dataset.del;
     try {
       if(window.db && currentUser && currentUser.uid !== 'local_user_guest'){
-        const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
         await deleteDoc(doc(window.db, "users", currentUser.uid, "expenses", id));
       }
     } catch(e) {}
@@ -868,7 +871,7 @@ function attachHomeEvents(){
     await saveCategoriesToFirebase();
     render();
     showToast('تم الحذف');
-  });
+  }));
 
   const btnSaveSalary = document.getElementById('btnSaveSalary');
   if(btnSaveSalary) btnSaveSalary.addEventListener('click', async ()=>{
@@ -876,7 +879,7 @@ function attachHomeEvents(){
     state.salary = v;
     try {
       if(window.db && currentUser && currentUser.uid !== 'local_user_guest'){
-        const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
         await setDoc(doc(window.db, "users", currentUser.uid, "settings", "salary"), { value: v });
       }
     } catch(e) {}
