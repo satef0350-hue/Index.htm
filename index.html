@@ -195,8 +195,7 @@
 
 <div class="wrap" id="app">
   <div class="loading" id="loadingMsg">
-    جاري التحقق من الاتصال والحساب...<br><br>
-    <button class="btn ghost" id="btnForceOpen" style="max-width:240px; margin:0 auto; display:none;">تخطي والدخول للميزانية</button>
+    جاري تجهيز ميزانيتك...
   </div>
 </div>
 
@@ -229,10 +228,10 @@
 
 <!-- ربط فايربيز مع المصادقة (Auth) -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-analytics.js";
-  import { getFirestore } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js";
-  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.x.x/firebase-auth.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-analytics.js";
+  import { getFirestore } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCwQfJ7yu6lkicJsPcpVCDnD1yJWBEZqwU",
@@ -251,10 +250,7 @@
 
   window.db = db;
   window.auth = auth;
-  window.signInWithEmailAndPassword = signInWithEmailAndPassword;
-  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
-  window.sendPasswordResetEmail = sendPasswordResetEmail;
-  window.signOut = signOut;
+  window.signInAnonymously = signInAnonymously;
   window.onAuthStateChanged = onAuthStateChanged;
   window.__firebaseReady = true;
 </script>
@@ -304,146 +300,55 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove('show'), 1800);
 }
 
-// تشغيل زر التخطي لو التحقق اتأخر
-setTimeout(() => {
-  const btn = document.getElementById('btnForceOpen');
-  if(btn) btn.style.display = 'block';
-}, 1200);
-
-document.addEventListener('click', (e) => {
-  if(e.target && e.target.id === 'btnForceOpen'){
-    // الدخول القسري كمستخدم افتراضي محلي لو فايربيز مش شغال
-    currentUser = { uid: 'local_user_guest' };
-    state.monthLabel = currentMonthLabel();
-    render();
-  }
-});
-
 window.addEventListener('DOMContentLoaded', () => {
   let initialCheckDone = false;
   let listenerAttached = false;
 
   const checkAuthInterval = setInterval(() => {
-    if(window.auth && window.onAuthStateChanged && !listenerAttached) {
+    if(window.auth && window.onAuthStateChanged && window.signInAnonymously && !listenerAttached) {
       listenerAttached = true;
       clearInterval(checkAuthInterval);
 
-      // هذا الـ listener بيفضل شغال طول عمر الصفحة، وكل مرة حالة الدخول تتغير
-      // (دخول، خروج، انتهاء الجلسة...) بيحصّل التحديث المناسب من غير أي شرط يوقفه
+      // هذا الـ listener بيفضل شغال طول عمر الصفحة. مفيش تسجيل دخول بإيميل/باسورد؛
+      // كل جهاز بياخد هوية مجهولة (anonymous) تلقائيًا وبتفضل ثابتة على نفس الجهاز/المتصفح،
+      // وبيانات كل جهاز بتتخزن على السحابة منفصلة عن أي جهاز تاني
       window.onAuthStateChanged(window.auth, async (user) => {
-        initialCheckDone = true;
         if(user){
+          initialCheckDone = true;
           currentUser = user;
           await loadState();
           render();
         } else {
-          currentUser = null;
-          renderLoginScreen();
+          try{
+            await window.signInAnonymously(window.auth);
+            // onAuthStateChanged هيتنادى تاني تلقائيًا بمستخدم مجهول جديد
+          }catch(e){
+            initialCheckDone = true;
+            // فشل الاتصال بفايربيز، استخدمي وضع محلي مؤقت على الجهاز ده فقط
+            currentUser = { uid: 'local_user_guest' };
+            state.monthLabel = currentMonthLabel();
+            render();
+          }
         }
       });
     }
   }, 100);
 
   setTimeout(() => {
-    if(!initialCheckDone) {
+    if(!initialCheckDone && !currentUser) {
       clearInterval(checkAuthInterval);
-      if(!currentUser) {
-        renderLoginScreen();
-      }
+      currentUser = { uid: 'local_user_guest' };
+      state.monthLabel = currentMonthLabel();
+      render();
     }
-  }, 2500);
+  }, 4000);
 });
-
-function renderLoginScreen(){
-  document.getElementById('fabAdd').style.display = 'none';
-  document.getElementById('tabbar').style.display = 'none';
-  document.getElementById('app').innerHTML = `
-    <div class="card" style="margin-top:20px; text-align:center;">
-      <h2>تسجيل الدخول</h2>
-      <p style="font-size:13px; color:var(--muted); margin-bottom:20px;">أدخل بريدك الإلكتروني وكلمة المرور للمتابعة.</p>
-      <div class="field"><label>البريد الإلكتروني</label><input type="email" id="authEmail" placeholder="name@example.com"></div>
-      <div class="field"><label>كلمة المرور</label><input type="password" id="authPassword" placeholder="••••••••"></div>
-      <button class="btn" id="btnLogin">دخول</button>
-      <div class="smalllink" id="linkForgot">نسيت كلمة المرور؟</div>
-      <div class="smalllink" id="linkToRegister" style="margin-top:16px; color:var(--green); font-weight:800;">ليس لديك حساب؟ إنشاء حساب جديد</div>
-      <div class="smalllink" id="linkBypass" style="margin-top:24px; color:var(--red);">أو الدخول المباشر بدون تسجيل (وضع محلي)</div>
-    </div>
-  `;
-
-  document.getElementById('btnLogin').addEventListener('click', async () => {
-    const email = document.getElementById('authEmail').value.trim();
-    const pass = document.getElementById('authPassword').value.trim();
-    if(!email || !pass){ showToast('املأ جميع الحقول'); return; }
-    try{
-      await window.signInWithEmailAndPassword(window.auth, email, pass);
-      showToast('تم تسجيل الدخول بنجاح');
-    }catch(e){
-      showToast('خطأ في البيانات، تأكد منها');
-    }
-  });
-
-  document.getElementById('linkForgot').addEventListener('click', renderForgotScreen);
-  document.getElementById('linkToRegister').addEventListener('click', renderRegisterScreen);
-  document.getElementById('linkBypass').addEventListener('click', () => {
-    currentUser = { uid: 'local_user_guest' };
-    state.monthLabel = currentMonthLabel();
-    render();
-  });
-}
-
-function renderRegisterScreen(){
-  document.getElementById('app').innerHTML = `
-    <div class="card" style="margin-top:20px; text-align:center;">
-      <h2>إنشاء حساب جديد</h2>
-      <div class="field"><label>البريد الإلكتروني</label><input type="email" id="regEmail" placeholder="name@example.com"></div>
-      <div class="field"><label>كلمة المرور</label><input type="password" id="regPassword" placeholder="••••••••"></div>
-      <button class="btn" id="btnRegister">تسجيل الحساب</button>
-      <div class="smalllink" id="linkBackLogin" style="margin-top:20px;">لديك حساب بالفعل؟ تسجيل الدخول</div>
-    </div>
-  `;
-
-  document.getElementById('btnRegister').addEventListener('click', async () => {
-    const email = document.getElementById('regEmail').value.trim();
-    const pass = document.getElementById('regPassword').value.trim();
-    if(!email || !pass){ showToast('املأ جميع الحقول'); return; }
-    try{
-      await window.createUserWithEmailAndPassword(window.auth, email, pass);
-      showToast('تم إنشاء الحساب بنجاح');
-    }catch(e){
-      showToast('خطأ: كلمة المرور ضعيفة أو البريد مستخدم مسبقاً');
-    }
-  });
-  document.getElementById('linkBackLogin').addEventListener('click', renderLoginScreen);
-}
-
-function renderForgotScreen(){
-  document.getElementById('app').innerHTML = `
-    <div class="card" style="margin-top:20px; text-align:center;">
-      <h2>استرجاع كلمة المرور</h2>
-      <div class="field"><label>البريد الإلكتروني</label><input type="email" id="forgotEmail" placeholder="name@example.com"></div>
-      <button class="btn" id="btnSendReset">إرسال رابط التعديل</button>
-      <div class="smalllink" id="linkBackLogin" style="margin-top:20px;">العودة لتسجيل الدخول</div>
-    </div>
-  `;
-  document.getElementById('btnSendReset').addEventListener('click', async () => {
-    const email = document.getElementById('forgotEmail').value.trim();
-    if(!email){ showToast('اكتب البريد الإلكتروني'); return; }
-    try{
-      await window.sendPasswordResetEmail(window.auth, email);
-      showToast('تم إرسال رابط تعديل كلمة المرور لبريدك');
-      renderLoginScreen();
-    }catch(e){
-      showToast('فشل الإرسال، تأكد من صحة البريد');
-    }
-  });
-  document.getElementById('linkBackLogin').addEventListener('click', renderLoginScreen);
-}
 
 async function loadState(){
   try{
     state.monthLabel = currentMonthLabel();
     if(window.db && currentUser && currentUser.uid !== 'local_user_guest'){
-      const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+      const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js");
       const uidPath = currentUser.uid;
 
       const expSnap = await getDocs(collection(window.db, "users", uidPath, "expenses"));
@@ -469,7 +374,7 @@ async function loadState(){
 async function saveAccountsToFirebase(){
   if(!window.db || !currentUser || currentUser.uid === 'local_user_guest') return;
   try{
-    const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+    const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js");
     await setDoc(doc(window.db, "users", currentUser.uid, "settings", "accounts"), { list: state.accounts });
   }catch(e){}
 }
@@ -477,7 +382,7 @@ async function saveAccountsToFirebase(){
 async function saveCategoriesToFirebase(){
   if(!window.db || !currentUser || currentUser.uid === 'local_user_guest') return;
   try{
-    const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+    const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js");
     await setDoc(doc(window.db, "users", currentUser.uid, "settings", "categories"), { list: state.categories });
   }catch(e){}
 }
@@ -524,9 +429,6 @@ function render(){
         <div class="sub">${state.monthLabel}</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <div class="iconbtn" id="btnLogout" title="تسجيل الخروج">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </div>
         <div class="iconbtn" id="btnEndMonth" title="إنهاء الشهر">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
         </div>
@@ -553,14 +455,14 @@ function renderHome(){
   let comparisonText = 'لا توجد مصروفات مسجلة للمقارنة حالياً.';
 
   if(cats.length === 0){
-    catsHtml = <div class="empty">لسه معملتش أي عملية الشهر ده.<br>اضغط "إضافة عملية" وابدأ تسجّل مصاريفك.</div>;
+    catsHtml = `<div class="empty">لسه معملتش أي عملية الشهر ده.<br>اضغط "إضافة عملية" وابدأ تسجّل مصاريفك.</div>`;
   } else {
     if(cats.length === 1){
-      comparisonText = المصروف بالكامل متركز حالياً في فئة <strong>${cats[0].name}</strong> بنسبة 100%.;
+      comparisonText = `المصروف بالكامل متركز حالياً في فئة <strong>${cats[0].name}</strong> بنسبة 100%.`;
     } else {
       const highest = cats[0];
-      const othersText = cats.slice(1).map(c => ${c.name} (${fmt(c.amount)} ج.م)).join('، و');
-      comparisonText = 📈 الفئة الأعلى في الصرف هي <strong>${highest.name}</strong> (${fmt(highest.amount)} ج.م)، وهي أعلى من باقي الفئات: ${othersText}.;
+      const othersText = cats.slice(1).map(c => `${c.name} (${fmt(c.amount)} ج.م)`).join('، و');
+      comparisonText = `📈 الفئة الأعلى في الصرف هي <strong>${highest.name}</strong> (${fmt(highest.amount)} ج.م)، وهي أعلى من باقي الفئات: ${othersText}.`;
     }
 
     catsHtml = cats.map(c=>{
@@ -580,10 +482,10 @@ function renderHome(){
   if(totalExp > 0){
     cats.forEach(c => {
       const sharePct = (c.amount / totalExp) * 100;
-      barSegmentsHtml += <div class="bar-seg" style="width:${sharePct}%; background:${c.color};" title="${c.name}: ${fmt(c.amount)} ج.م"></div>;
+      barSegmentsHtml += `<div class="bar-seg" style="width:${sharePct}%; background:${c.color};" title="${c.name}: ${fmt(c.amount)} ج.م"></div>`;
     });
   } else {
-    barSegmentsHtml = <div class="bar-seg" style="width:100%; background:var(--line);"></div>;
+    barSegmentsHtml = `<div class="bar-seg" style="width:100%; background:var(--line);"></div>`;
   }
 
   return `
@@ -615,7 +517,7 @@ function renderTx(){
   const list = [...state.expenses].sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.id||'').localeCompare(a.id||''));
   let rows = '';
   if(list.length===0){
-    rows = <div class="empty">مفيش عمليات مسجّلة لسه.</div>;
+    rows = `<div class="empty">مفيش عمليات مسجّلة لسه.</div>`;
   } else {
     rows = list.map(e=>{
       const isIncome = e.type==='income';
@@ -632,7 +534,7 @@ function renderTx(){
       </div>`;
     }).join('');
   }
-  return <div class="card"><h2>كل العمليات (${list.length})</h2>${rows}</div>;
+  return `<div class="card"><h2>كل العمليات (${list.length})</h2>${rows}</div>`;
 }
 
 function catIcon(catId){
@@ -642,7 +544,7 @@ function catIcon(catId){
 
 function renderArchive(){
   if(archiveIndex.length===0){
-    return <div class="card"><h2>الأرشيف</h2><div class="empty">لسه معندكش شهور مؤرشفة.</div></div>;
+    return `<div class="card"><h2>الأرشيف</h2><div class="empty">لسه معندكش شهور مؤرشفة.</div></div>`;
   }
   const items = [...archiveIndex].reverse().map(m=>`
     <div class="archiveitem" data-archive="${m.key}">
@@ -650,7 +552,7 @@ function renderArchive(){
       <div class="stats"><span>المرتب: ${fmt(m.salary)}</span><span>المتبقي: ${fmt(m.salary - m.totalExpenses)}</span></div>
     </div>
   `).join('');
-  return <div class="card"><h2>الشهور المؤرشفة</h2>${items}</div>;
+  return `<div class="card"><h2>الشهور المؤرشفة</h2>${items}</div>`;
 }
 
 function renderSettings(){
@@ -658,12 +560,12 @@ function renderSettings(){
     <div class="catrow">
       <div class="catname">${a.name}</div>
       <div style="font-size:13px;font-weight:700;color:var(--muted);margin-left:10px;">الرصيد: ${fmt(a.initialBalance || 0)} ج.م</div>
-      ${state.accounts.length>1?<button class="txdel" data-delacc="${a.id}">✕</button>:''}
+      ${state.accounts.length>1?`<button class="txdel" data-delacc="${a.id}">✕</button>`:''}
     </div>`).join('');
 
   const catRows = state.categories.map(c=>`
     <div class="catrow"><div class="dot" style="background:${c.color}"></div><div class="catname">${c.name}</div>
-    ${!DEFAULT_CATEGORIES.find(d=>d.id===c.id)?<button class="txdel" data-delcat="${c.id}">✕</button>:''}
+    ${!DEFAULT_CATEGORIES.find(d=>d.id===c.id)?`<button class="txdel" data-delcat="${c.id}">✕</button>`:''}
     </div>`).join('');
 
   return `
@@ -686,8 +588,8 @@ function closeSheet(){
 }
 
 function openAddExpenseSheet(){
-  const catChips = state.categories.map(c=><button class="chip" data-cat="${c.id}" data-catname="${c.name}">${c.name}</button>).join('');
-  const accChips = state.accounts.map(a=><button class="chip" data-acc="${a.id}" data-accname="${a.name}">${a.name}</button>).join('');
+  const catChips = state.categories.map(c=>`<button class="chip" data-cat="${c.id}" data-catname="${c.name}">${c.name}</button>`).join('');
+  const accChips = state.accounts.map(a=>`<button class="chip" data-acc="${a.id}" data-accname="${a.name}">${a.name}</button>`).join('');
   openSheet(`
     <h3>إضافة عملية</h3>
     <div class="rowline" style="margin-bottom:16px;">
@@ -740,7 +642,7 @@ function openAddExpenseSheet(){
 
     try {
       if(window.db && currentUser && currentUser.uid !== 'local_user_guest'){
-        const { addDoc, collection } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+        const { addDoc, collection } = await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js");
         const docRef = await addDoc(collection(window.db, "users", currentUser.uid, "expenses"), entry);
         entry.firestoreId = docRef.id;
       }
@@ -811,7 +713,7 @@ function openEndMonthSheet(){
     
     try{
       if(window.db && currentUser && currentUser.uid !== 'local_user_guest'){
-        const { setDoc, deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+        const { setDoc, deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js");
         await setDoc(doc(window.db, "users", currentUser.uid, "archives", key), archived);
         const archItem = {key, label: state.monthLabel, salary: state.salary, totalExpenses: totalExpenses()};
         await setDoc(doc(window.db, "users", currentUser.uid, "archiveIndex", key), archItem);
@@ -838,19 +740,11 @@ function attachHomeEvents(){
   const endBtn = document.getElementById('btnEndMonth');
   if(endBtn) endBtn.addEventListener('click', openEndMonthSheet);
 
-  const logoutBtn = document.getElementById('btnLogout');
-  if(logoutBtn) logoutBtn.addEventListener('click', async () => {
-    if(window.auth) await window.signOut(window.auth);
-    currentUser = null;
-    renderLoginScreen();
-    showToast('تم تسجيل الخروج');
-  });
-
   document.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', async ()=>{
     const id = b.dataset.del;
     try {
       if(window.db && currentUser && currentUser.uid !== 'local_user_guest'){
-        const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+        const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js");
         await deleteDoc(doc(window.db, "users", currentUser.uid, "expenses", id));
       }
     } catch(e) {}
@@ -879,7 +773,7 @@ function attachHomeEvents(){
     state.salary = v;
     try {
       if(window.db && currentUser && currentUser.uid !== 'local_user_guest'){
-        const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js");
+        const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js");
         await setDoc(doc(window.db, "users", currentUser.uid, "settings", "salary"), { value: v });
       }
     } catch(e) {}
