@@ -90,6 +90,9 @@
   .catamt{font-size:14px;font-weight:800;}
   .catpct{font-size:12px;color:var(--muted);width:34px;text-align:left;}
 
+  .segbar{display:flex;height:14px;border-radius:20px;overflow:hidden;margin:6px 0 18px;background:var(--card-warm);}
+  .segbar>div{height:100%;}
+
   .txrow{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);}
   .txrow:last-child{border-bottom:none;}
   .txicon{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;background:var(--card-warm);}
@@ -300,7 +303,7 @@ const DEFAULT_CATEGORIES = [
   {id:'other', name:'أخرى', color:'#9A8C6E'},
 ];
 const DEFAULT_ACCOUNTS = [
-  {id:'cash', name:'نقدي'},
+  {id:'cash', name:'نقدي', balance:0},
 ];
 
 let state = {
@@ -454,13 +457,19 @@ function renderHome(){
   const over = used > 100;
   const cats = categoryTotals();
   const budget = totalBudget();
+  const spent = totalExpenses();
 
   let catsHtml = '';
+  let segbarHtml = '';
   if(cats.length===0){
     catsHtml = `<div class="empty">لسه معملتش أي عملية الشهر ده.<br>اضغط "إضافة عملية" وابدأ تسجّل مصاريفك.</div>`;
   } else {
+    segbarHtml = `<div class="segbar">${cats.map(c=>{
+      const segP = spent>0 ? (c.amount/spent)*100 : 0;
+      return `<div style="width:${segP}%;background:${c.color}"></div>`;
+    }).join('')}</div>`;
     catsHtml = cats.map(c=>{
-      const p = budget>0 ? Math.round((c.amount/budget)*100) : 0;
+      const p = spent>0 ? Math.round((c.amount/spent)*100) : 0;
       return `
       <div class="catrow">
         <div class="dot" style="background:${c.color}"></div>
@@ -470,6 +479,12 @@ function renderHome(){
       </div>`;
     }).join('');
   }
+
+  const accBalancesHtml = state.accounts.map(a=>`
+    <div class="catrow">
+      <div class="catname">${a.name}</div>
+      <div class="catamt" style="${Number(a.balance)<0?'color:var(--red);':''}">${fmt(a.balance)} <span style="font-size:11px;color:var(--muted);font-weight:600;">ج.م</span></div>
+    </div>`).join('');
 
   return `
     <div class="hero">
@@ -482,6 +497,11 @@ function renderHome(){
     </div>
 
     <div class="card">
+      <h2>أرصدة الحسابات</h2>
+      ${accBalancesHtml}
+    </div>
+
+    <div class="card">
       <h2>نسبة الاستخدام من الميزانية</h2>
       <div class="pct ${over?'over':''}">${used}%</div>
       <div class="barwrap"><div class="bar ${over?'over':''}" style="width:${Math.min(100,used)}%"></div></div>
@@ -489,7 +509,8 @@ function renderHome(){
     </div>
 
     <div class="card">
-      <h2>مصروفاتك حسب الفئة</h2>
+      <h2>توزيع المصروف — إلى أين تذهب أموالك؟</h2>
+      ${segbarHtml}
       ${catsHtml}
     </div>
   `;
@@ -542,7 +563,9 @@ function renderArchive(){
 
 function renderSettings(){
   const accRows = state.accounts.map(a=>`
-    <div class="catrow"><div class="catname">${a.name}</div>
+    <div class="catrow">
+      <div class="catname">${a.name}</div>
+      <div class="catamt" style="${Number(a.balance)<0?'color:var(--red);':''}">${fmt(a.balance)} <span style="font-size:11px;color:var(--muted);font-weight:600;">ج.م</span></div>
     ${state.accounts.length>1?`<button class="txdel" data-delacc="${a.id}">✕</button>`:''}
     </div>`).join('');
   const catRows = state.categories.map(c=>`
@@ -655,6 +678,10 @@ function openAddExpenseSheet(){
       amount: amt, note, date: new Date().toISOString().slice(0,10),
     };
     state.expenses.push(entry);
+    const acc = state.accounts.find(a=>a.id===selAcc);
+    if(acc){
+      acc.balance = Number(acc.balance||0) + (selType==='income' ? amt : -amt);
+    }
     await saveState();
     closeSheet();
     render();
@@ -666,6 +693,7 @@ function openAddAccountSheet(){
   openSheet(`
     <h3>حساب جديد</h3>
     <div class="field"><label>اسم الحساب</label><input type="text" id="accNameInput" placeholder="مثال: حساب البنك الأهلي"></div>
+    <div class="field"><label>الرصيد الحالي (ج.م)</label><input type="number" id="accBalanceInput" placeholder="0" inputmode="decimal"></div>
     <button class="btn" id="btnSaveAcc">إضافة</button>
     <div class="smalllink" id="btnCancelSheet">إلغاء</div>
   `);
@@ -673,7 +701,8 @@ function openAddAccountSheet(){
   document.getElementById('btnSaveAcc').addEventListener('click', async ()=>{
     const name = document.getElementById('accNameInput').value.trim();
     if(!name){ showToast('اكتب اسم الحساب'); return; }
-    state.accounts.push({id: uid(), name});
+    const balance = parseFloat(document.getElementById('accBalanceInput').value) || 0;
+    state.accounts.push({id: uid(), name, balance});
     await saveState();
     closeSheet(); render(); showToast('تم إضافة الحساب');
   });
@@ -760,6 +789,13 @@ function attachHomeEvents(){
 
   document.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', async ()=>{
     const id = b.dataset.del;
+    const delEntry = state.expenses.find(e=>e.id===id);
+    if(delEntry){
+      const acc = state.accounts.find(a=>a.id===delEntry.account);
+      if(acc){
+        acc.balance = Number(acc.balance||0) + (delEntry.type==='income' ? -Number(delEntry.amount) : Number(delEntry.amount));
+      }
+    }
     state.expenses = state.expenses.filter(e=>e.id!==id);
     await saveState(); render(); showToast('تم الحذف');
   }));
@@ -925,3 +961,4 @@ auth.onAuthStateChanged(async (user)=>{
 </script>
 </body>
 </html>
+
