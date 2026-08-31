@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -188,6 +189,12 @@
   }
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-8px);}
   .loading{text-align:center;padding:60px 0;color:var(--muted);font-size:13px;}
+  .offlinebar{
+    position:fixed;top:0;right:0;left:0;background:#E8A93C;color:#3a2c05;
+    text-align:center;font-size:12px;font-weight:800;padding:7px 10px;z-index:250;
+    display:none;
+  }
+  .offlinebar.show{display:block;}
 
   .authwrap{max-width:420px;margin:0 auto;padding:60px 18px;}
   .authlogo{text-align:center;margin-bottom:22px;}
@@ -243,6 +250,7 @@
   </div>
 </div>
 
+<div class="offlinebar" id="offlineBar">📡 أنت غير متصل بالإنترنت — بياناتك بتتحفظ عندك وهتتزامن مع السحابة أوتوماتيك لما النت يرجع</div>
 <div class="wrap" id="app" style="display:none;">
   <div class="loading" id="loadingMsg">جاري تحميل بياناتك…</div>
 </div>
@@ -294,6 +302,13 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+// تفعيل التخزين المؤقت على الجهاز (Offline Persistence)
+// كده التطبيق يشتغل من غير نت، وأي تغيير بيتحفظ محليًا لحد ما النت يرجع
+// وبعدين بيتزامن تلقائيًا مع السحابة من غير أي تدخل من المستخدم
+db.enablePersistence({synchronizeTabs:true}).catch((err)=>{
+  console.warn('Offline persistence not enabled:', err.code);
+});
+
 let currentUser = null;
 
 const DEFAULT_CATEGORIES = [
@@ -308,6 +323,7 @@ const DEFAULT_CATEGORIES = [
   {id:'other', name:'أخرى', color:'#9A8C6E'},
 ];
 const DEFAULT_ACCOUNTS = [
+  {id:'salary', name:'المرتب الشهري', balance:0},
   {id:'cash', name:'نقدي', balance:0},
 ];
 
@@ -360,6 +376,9 @@ async function loadState(){
         monthLabel: saved.monthLabel ?? currentMonthLabel(),
       });
       archiveIndex = saved.archiveIndex ?? [];
+      if(!state.accounts.find(a=>a.id==='salary')){
+        state.accounts.unshift({id:'salary', name:'المرتب الشهري', balance:0});
+      }
     } else {
       state.monthLabel = currentMonthLabel();
       await saveState();
@@ -572,7 +591,7 @@ function renderSettings(){
     <div class="catrow">
       <div class="catname">${a.name}</div>
       <div class="catamt" style="${Number(a.balance)<0?'color:var(--red);':''}">${fmt(a.balance)} <span style="font-size:11px;color:var(--muted);font-weight:600;">ج.م</span></div>
-    ${state.accounts.length>1?`<button class="txdel" data-delacc="${a.id}">✕</button>`:''}
+    ${a.id!=='salary'?`<button class="txdel" data-delacc="${a.id}">✕</button>`:''}
     </div>`).join('');
   const catRows = state.categories.map(c=>`
     <div class="catrow"><div class="dot" style="background:${c.color}"></div><div class="catname">${c.name}</div>
@@ -1041,8 +1060,19 @@ auth.onAuthStateChanged(async (user)=>{
     authFormArea.style.display = 'block';
   }
 });
+
+// ============================================================
+// مؤشر حالة الاتصال بالإنترنت
+// ============================================================
+function updateOnlineStatus(){
+  const bar = document.getElementById('offlineBar');
+  if(!bar) return;
+  bar.classList.toggle('show', !navigator.onLine);
+}
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+updateOnlineStatus();
 </script>
 </body>
 </html>
-
 
