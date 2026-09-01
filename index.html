@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -164,6 +163,21 @@
     padding:9px 15px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--ink);
   }
   .chip.sel{background:var(--green);border-color:var(--green);color:#fff;}
+
+  .billrow{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);}
+  .billrow:last-child{border-bottom:none;}
+  .billrow.paiddone{opacity:.6;}
+  .billbody{flex:1;min-width:0;}
+  .billname{font-size:14px;font-weight:700;}
+  .billnote{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .billamt{font-size:14px;font-weight:800;white-space:nowrap;}
+  .billpaybtn{background:var(--green);color:#fff;border:none;border-radius:20px;padding:7px 14px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;}
+  .billpaidtag{color:var(--green-deep);font-size:12px;font-weight:800;white-space:nowrap;}
+  .stag{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;margin-right:4px;}
+  .stag-overdue{background:#F7DAD4;color:var(--red);}
+  .stag-soon{background:#FBEBC9;color:#8A6414;}
+  .stag-upcoming{background:var(--card-warm);color:var(--muted);}
+  .stag-paid{background:#DCEAE3;color:var(--green-deep);}
   .btn{
     width:100%;background:var(--green);color:#fff;border:none;border-radius:16px;
     padding:15px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-top:6px;
@@ -269,6 +283,10 @@
     <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
     العمليات
   </button>
+  <button data-tab="bills">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
+    المستحقات
+  </button>
   <button data-tab="archive">
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
     الأرشيف
@@ -333,6 +351,8 @@ let state = {
   categories: DEFAULT_CATEGORIES,
   expenses: [], // {id, type:'expense'|'income', category, categoryName, account, amount, note, date}
   monthLabel: '',
+  bills: [], // {id, name, amount, note, paid, paidExpenseId}
+  commitments: [], // {id, name, amount, dueDay, notify, lastPaidMonth}
 };
 let archiveIndex = [];
 let ready = false;
@@ -346,6 +366,29 @@ function fmt(n){
 function currentMonthLabel(){
   const d = new Date();
   return MONTHS_AR[d.getMonth()] + ' ' + d.getFullYear();
+}
+function currentCalendarMonthKey(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+function daysInCurrentMonth(){
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+}
+function commitmentDueDateThisMonth(dueDay){
+  const d = new Date();
+  const day = Math.min(Number(dueDay), daysInCurrentMonth());
+  return new Date(d.getFullYear(), d.getMonth(), day);
+}
+function commitmentStatus(c){
+  // 'paid' | 'overdue' | 'soon' | 'upcoming'
+  if(c.lastPaidMonth === currentCalendarMonthKey()) return 'paid';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = commitmentDueDateThisMonth(c.dueDay); due.setHours(0,0,0,0);
+  const diffDays = Math.round((due-today)/86400000);
+  if(diffDays < 0) return 'overdue';
+  if(diffDays <= 3) return 'soon';
+  return 'upcoming';
 }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
@@ -374,10 +417,14 @@ async function loadState(){
         categories: saved.categories ?? DEFAULT_CATEGORIES,
         expenses: saved.expenses ?? [],
         monthLabel: saved.monthLabel ?? currentMonthLabel(),
+        bills: saved.bills ?? [],
+        commitments: saved.commitments ?? [],
       });
       archiveIndex = saved.archiveIndex ?? [];
-      if(!state.accounts.find(a=>a.id==='salary')){
-        state.accounts.unshift({id:'salary', name:'المرتب الشهري', balance:0});
+      let sAcc = state.accounts.find(a=>a.id==='salary');
+      if(!sAcc){
+        // ترحيل: لو مفيش حساب "المرتب الشهري" اتعمل قبل كده، اعمله وحط فيه قيمة المرتب القديمة (لو موجودة)
+        state.accounts.unshift({id:'salary', name:'المرتب الشهري', balance: Number(saved.salary||0)});
       }
     } else {
       state.monthLabel = currentMonthLabel();
@@ -393,12 +440,14 @@ async function loadState(){
 async function saveState(){
   try{
     await userDocRef().set({
-      salary: state.salary,
+      salary: salaryBalance(),
       accounts: state.accounts,
       categories: state.categories,
       expenses: state.expenses,
       monthLabel: state.monthLabel,
       archiveIndex: archiveIndex,
+      bills: state.bills,
+      commitments: state.commitments,
     }, {merge:true});
   }
   catch(e){ console.error('save failed', e); showToast('تعذر الحفظ على السحابة، تأكد من الإنترنت'); }
@@ -411,14 +460,21 @@ async function saveArchiveIndex(){
 }
 
 // ---------- computations ----------
+function salaryAccount(){
+  return state.accounts.find(a=>a.id==='salary');
+}
+function salaryBalance(){
+  return Number(salaryAccount()?.balance || 0);
+}
 function totalExpenses(){
   return state.expenses.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount),0);
 }
 function totalIncomeExtra(){
-  return state.expenses.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount),0);
+  // مبلغ أي دخل اتضاف لحساب غير "المرتب الشهري" (لأن دخل المرتب نفسه بقى محسوب جوه رصيد حساب المرتب)
+  return state.expenses.filter(e=>e.type==='income' && e.account!=='salary').reduce((s,e)=>s+Number(e.amount),0);
 }
 function totalBudget(){
-  return Number(state.salary||0) + totalIncomeExtra();
+  return salaryBalance() + totalIncomeExtra();
 }
 function remaining(){
   return totalBudget() - totalExpenses();
@@ -469,6 +525,7 @@ function render(){
 
   if(activeTab==='home') html += renderHome();
   else if(activeTab==='tx') html += renderTx();
+  else if(activeTab==='bills') html += renderBills();
   else if(activeTab==='archive') html += renderArchive();
   else if(activeTab==='settings') html += renderSettings();
 
@@ -516,7 +573,7 @@ function renderHome(){
       <div class="label">الرصيد المتبقي من ${fmt(budget)} ج.م</div>
       <div class="big">${fmt(remaining())} ج.م</div>
       <div class="row">
-        <div class="col"><div class="k">المرتب الشهري</div><div class="v plus">${fmt(state.salary)}</div></div>
+        <div class="col"><div class="k">المرتب الشهري</div><div class="v plus">${fmt(salaryBalance())}</div></div>
         <div class="col"><div class="k">إجمالي المصروف</div><div class="v minus">${fmt(totalExpenses())}</div></div>
       </div>
     </div>
@@ -570,6 +627,196 @@ function catIcon(catId){
   return icons[catId] || '📌';
 }
 
+function renderBills(){
+  const bills = state.bills || [];
+  const unpaid = bills.filter(b=>!b.paid);
+  const paid = bills.filter(b=>b.paid);
+  const totalUnpaid = unpaid.reduce((s,b)=>s+Number(b.amount),0);
+
+  const rowHtml = (b)=>`
+    <div class="billrow ${b.paid?'paiddone':''}">
+      <div class="billbody">
+        <div class="billname">${b.name}</div>
+        ${b.note?`<div class="billnote">${b.note}</div>`:''}
+      </div>
+      <div class="billamt">${fmt(b.amount)} <span style="font-size:11px;color:var(--muted);font-weight:600;">ج.م</span></div>
+      ${b.paid
+        ? `<span class="billpaidtag">✓ اتدفعت</span>`
+        : `<button class="billpaybtn" data-paybill="${b.id}">دفع</button>`}
+      <button class="txdel" data-delbill="${b.id}">✕</button>
+    </div>`;
+
+  const commitments = state.commitments || [];
+  const statusLabel = {overdue:'متأخر', soon:'قربت', upcoming:'قريبًا', paid:'اتدفع الشهر ده'};
+  const statusClass = {overdue:'stag-overdue', soon:'stag-soon', upcoming:'stag-upcoming', paid:'stag-paid'};
+  const commitRowHtml = (c)=>{
+    const st = commitmentStatus(c);
+    const due = commitmentDueDateThisMonth(c.dueDay);
+    const dueLabel = due.getDate()+' '+MONTHS_AR[due.getMonth()];
+    return `
+    <div class="billrow ${st==='paid'?'paiddone':''}">
+      <div class="billbody">
+        <div class="billname">${c.name} ${c.notify?'🔔':''}</div>
+        <div class="billnote">كل شهر يوم ${c.dueDay} · معاد الشهر ده: ${dueLabel} <span class="stag ${statusClass[st]}">${statusLabel[st]}</span></div>
+      </div>
+      <div class="billamt">${fmt(c.amount)} <span style="font-size:11px;color:var(--muted);font-weight:600;">ج.م</span></div>
+      ${st==='paid'
+        ? `<span class="billpaidtag">✓ اتدفع</span>`
+        : `<button class="billpaybtn" data-paycommit="${c.id}">دفع</button>`}
+      <button class="txdel" data-delcommit="${c.id}">✕</button>
+    </div>`;
+  };
+
+  let html = `
+    <div class="card">
+      <h2>الالتزامات الشهرية المتكررة</h2>
+      <div class="catmini" style="margin-bottom:10px;">زي فاتورة الموبايل، الجمعية، الأقساط... بتتكرر كل شهر وممكن تجيلك تنبيه قبل معادها.</div>
+      ${commitments.length ? commitments.map(commitRowHtml).join('') : `<div class="empty">لسه معملتش أي التزام شهري متكرر.</div>`}
+      <button class="btn" id="btnAddCommitment" style="margin-top:14px;">+ إضافة التزام شهري</button>
+    </div>
+
+    <div class="card">
+      <h2>لسه محتاج تدفع (مرة واحدة)</h2>
+      ${unpaid.length ? `<div class="catmini" style="margin-bottom:10px;">إجمالي المستحقات: <b style="color:var(--red);">${fmt(totalUnpaid)} ج.م</b></div>` : ''}
+      ${unpaid.length ? unpaid.map(rowHtml).join('') : `<div class="empty">مفيش مستحقات لسه.<br>دوس "إضافة مستحق" وسجّل أي فاتورة أو التزام لازم تدفعه الشهر ده.</div>`}
+      <button class="btn" id="btnAddBill" style="margin-top:14px;">+ إضافة مستحق</button>
+    </div>
+  `;
+  if(paid.length){
+    html += `
+    <div class="card">
+      <h2>اتدفعت الشهر ده</h2>
+      ${paid.map(rowHtml).join('')}
+    </div>`;
+  }
+  return html;
+}
+
+function openAddBillSheet(){
+  openSheet(`
+    <h3>مستحق جديد</h3>
+    <div class="field"><label>اسم المستحق</label><input type="text" id="billNameInput" placeholder="مثال: إيجار الشقة، فاتورة النت..."></div>
+    <div class="field"><label>المبلغ (ج.م)</label><input type="number" id="billAmtInput" placeholder="0" inputmode="decimal"></div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input type="text" id="billNoteInput" placeholder="أي تفاصيل إضافية"></div>
+    <button class="btn" id="btnSaveBill">إضافة</button>
+    <div class="smalllink" id="btnCancelSheet">إلغاء</div>
+  `);
+  document.getElementById('btnCancelSheet').addEventListener('click', closeSheet);
+  document.getElementById('btnSaveBill').addEventListener('click', async ()=>{
+    const name = document.getElementById('billNameInput').value.trim();
+    const amt = parseFloat(document.getElementById('billAmtInput').value);
+    if(!name){ showToast('اكتب اسم المستحق'); return; }
+    if(!amt || amt<=0){ showToast('اكتب مبلغ صحيح'); return; }
+    const note = document.getElementById('billNoteInput').value.trim();
+    state.bills.push({id: uid(), name, amount: amt, note, paid:false, paidExpenseId:null});
+    await saveState();
+    closeSheet(); render(); showToast('تم إضافة المستحق');
+  });
+}
+
+function openPayBillSheet(billId){
+  const bill = state.bills.find(b=>b.id===billId);
+  if(!bill) return;
+  const accChips = state.accounts.map(a=>`<button class="chip" data-payacc="${a.id}" data-payaccname="${a.name}">${a.name}</button>`).join('');
+  openSheet(`
+    <h3>دفع "${bill.name}" — ${fmt(bill.amount)} ج.م</h3>
+    <div class="field">
+      <label>ادفع من أي حساب؟</label>
+      <div class="chipwrap">${accChips}</div>
+    </div>
+    <button class="btn" id="btnConfirmPayBill">تأكيد الدفع</button>
+    <div class="smalllink" id="btnCancelSheet">إلغاء</div>
+  `);
+  document.getElementById('btnCancelSheet').addEventListener('click', closeSheet);
+  let payAcc = state.accounts[0]?.id, payAccName = state.accounts[0]?.name;
+  document.querySelectorAll('.chip[data-payacc]')[0]?.classList.add('sel');
+  document.querySelectorAll('.chip[data-payacc]').forEach(b=>b.addEventListener('click', ()=>{
+    document.querySelectorAll('.chip[data-payacc]').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel');
+    payAcc = b.dataset.payacc; payAccName = b.dataset.payaccname;
+  }));
+  document.getElementById('btnConfirmPayBill').addEventListener('click', async ()=>{
+    const entry = {
+      id: uid(), type:'expense', category:null, categoryName:'مستحق: '+bill.name,
+      account: payAcc, accountName: payAccName,
+      amount: bill.amount, note: bill.name, date: new Date().toISOString().slice(0,10),
+    };
+    state.expenses.push(entry);
+    const acc = state.accounts.find(a=>a.id===payAcc);
+    if(acc) acc.balance = Number(acc.balance||0) - Number(bill.amount);
+    bill.paid = true; bill.paidExpenseId = entry.id;
+    await saveState();
+    closeSheet(); render(); showToast('تم تسجيل الدفع');
+  });
+}
+
+function openAddCommitmentSheet(){
+  openSheet(`
+    <h3>التزام شهري متكرر</h3>
+    <div class="field"><label>اسم الالتزام</label><input type="text" id="cmName" placeholder="مثال: فاتورة الموبايل، جمعية، قسط..."></div>
+    <div class="field"><label>المبلغ (ج.م)</label><input type="number" id="cmAmt" placeholder="0" inputmode="decimal"></div>
+    <div class="field"><label>يوم الاستحقاق كل شهر (1-31)</label><input type="number" id="cmDay" placeholder="مثال: 5" min="1" max="31" inputmode="numeric"></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;margin:6px 0 16px;">
+      <input type="checkbox" id="cmNotify" checked style="width:17px;height:17px;">
+      نبّهني قبل المعاد بـ 3 أيام (لازم تسمح بالإشعارات)
+    </label>
+    <button class="btn" id="btnSaveCommitment">إضافة</button>
+    <div class="smalllink" id="btnCancelSheet">إلغاء</div>
+  `);
+  document.getElementById('btnCancelSheet').addEventListener('click', closeSheet);
+  document.getElementById('btnSaveCommitment').addEventListener('click', async ()=>{
+    const name = document.getElementById('cmName').value.trim();
+    const amt = parseFloat(document.getElementById('cmAmt').value);
+    let day = parseInt(document.getElementById('cmDay').value);
+    const notify = document.getElementById('cmNotify').checked;
+    if(!name){ showToast('اكتب اسم الالتزام'); return; }
+    if(!amt || amt<=0){ showToast('اكتب مبلغ صحيح'); return; }
+    if(!day || day<1 || day>31){ showToast('اكتب يوم صحيح من 1 لـ 31'); return; }
+    if(notify && 'Notification' in window && Notification.permission==='default'){
+      try{ await Notification.requestPermission(); }catch(e){}
+    }
+    state.commitments.push({id: uid(), name, amount: amt, dueDay: day, notify, lastPaidMonth: null});
+    await saveState();
+    closeSheet(); render(); showToast('تم إضافة الالتزام');
+  });
+}
+
+function openPayCommitmentSheet(commitId){
+  const c = state.commitments.find(x=>x.id===commitId);
+  if(!c) return;
+  const accChips = state.accounts.map(a=>`<button class="chip" data-payacc="${a.id}" data-payaccname="${a.name}">${a.name}</button>`).join('');
+  openSheet(`
+    <h3>دفع "${c.name}" — ${fmt(c.amount)} ج.م</h3>
+    <div class="field">
+      <label>ادفع من أي حساب؟</label>
+      <div class="chipwrap">${accChips}</div>
+    </div>
+    <button class="btn" id="btnConfirmPayCommit">تأكيد الدفع</button>
+    <div class="smalllink" id="btnCancelSheet">إلغاء</div>
+  `);
+  document.getElementById('btnCancelSheet').addEventListener('click', closeSheet);
+  let payAcc = state.accounts[0]?.id, payAccName = state.accounts[0]?.name;
+  document.querySelectorAll('.chip[data-payacc]')[0]?.classList.add('sel');
+  document.querySelectorAll('.chip[data-payacc]').forEach(b=>b.addEventListener('click', ()=>{
+    document.querySelectorAll('.chip[data-payacc]').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel');
+    payAcc = b.dataset.payacc; payAccName = b.dataset.payaccname;
+  }));
+  document.getElementById('btnConfirmPayCommit').addEventListener('click', async ()=>{
+    const entry = {
+      id: uid(), type:'expense', category:null, categoryName:'التزام: '+c.name,
+      account: payAcc, accountName: payAccName,
+      amount: c.amount, note: c.name, date: new Date().toISOString().slice(0,10),
+    };
+    state.expenses.push(entry);
+    const acc = state.accounts.find(a=>a.id===payAcc);
+    if(acc) acc.balance = Number(acc.balance||0) - Number(c.amount);
+    c.lastPaidMonth = currentCalendarMonthKey();
+    await saveState();
+    closeSheet(); render(); showToast('تم تسجيل الدفع');
+  });
+}
+
 function renderArchive(){
   if(archiveIndex.length===0){
     return `<div class="card"><h2>الأرشيف</h2><div class="empty">لسه معندكش شهور مؤرشفة.<br>لما تخلّص الشهر اضغط أيقونة الأرشيف فوق لحفظه هنا.</div></div>`;
@@ -608,8 +855,8 @@ function renderSettings(){
     <div class="card">
       <h2>المرتب الشهري</h2>
       <div class="field">
-        <label>المرتب (ج.م)</label>
-        <input type="number" id="salaryInput" value="${state.salary}" inputmode="decimal">
+        <label>الرصيد الحالي (ج.م)</label>
+        <input type="number" id="salaryInput" value="${salaryBalance()}" inputmode="decimal">
       </div>
       <button class="btn" id="btnSaveSalary">حفظ المرتب</button>
     </div>
@@ -762,7 +1009,7 @@ function openEndMonthSheet(){
   openSheet(`
     <h3>إنهاء الشهر وأرشفته</h3>
     <div class="field" style="background:var(--card-warm);padding:14px;border-radius:14px;font-size:13px;line-height:1.9;">
-      هيتم حفظ "${state.monthLabel}" في الأرشيف بإجمالي مصروف ${fmt(used)} ج.م، وهيتصفّر العمليات عشان تبدأ شهر جديد. مرتبك الحالي (${fmt(state.salary)}) هيفضل زي ما هو، وتقدر تعدّله من الإعدادات.
+      هيتم حفظ "${state.monthLabel}" في الأرشيف بإجمالي مصروف ${fmt(used)} ج.م، وهيتصفّر العمليات عشان تبدأ شهر جديد. رصيد "المرتب الشهري" الحالي (${fmt(salaryBalance())}) هيفضل زي ما هو إلا لو اخترت ترحّله وتصفّره تحت.
     </div>
     <div class="field">
       <label>هترحّل إيه في الأرشفة دي؟</label>
@@ -792,13 +1039,14 @@ function openEndMonthSheet(){
     const key = uid();
     const accountBalancesSnapshot = state.accounts.map(a=>({id:a.id, name:a.name, balance:a.balance}));
     const archived = {
-      key, label: state.monthLabel, salary: state.salary,
+      key, label: state.monthLabel, salary: salaryBalance(),
       totalExpenses: totalExpenses(), totalIncomeExtra: totalIncomeExtra(),
       expenses: state.expenses, categoryTotals: categoryTotals(),
       accountBalances: accountBalancesSnapshot,
+      bills: state.bills,
     };
     try{ await archiveDocRef(key).set(archived); }catch(e){ console.error(e); }
-    archiveIndex.push({key, label: state.monthLabel, salary: state.salary, totalExpenses: totalExpenses()});
+    archiveIndex.push({key, label: state.monthLabel, salary: salaryBalance(), totalExpenses: totalExpenses()});
     await saveArchiveIndex();
 
     if(endMode==='all'){
@@ -809,6 +1057,9 @@ function openEndMonthSheet(){
         }
       });
     }
+
+    // المستحقات اللي اتدفعت تتشال، واللي لسه متدفعتش تفضل عشان لسه واجبة
+    state.bills = (state.bills||[]).filter(b=>!b.paid);
 
     state.expenses = [];
     state.monthLabel = currentMonthLabel();
@@ -889,6 +1140,28 @@ function attachHomeEvents(){
     openQuickAddSheet(b.dataset.quickadd, b.dataset.quickaddname);
   }));
 
+  const btnAddBill = document.getElementById('btnAddBill');
+  if(btnAddBill) btnAddBill.addEventListener('click', openAddBillSheet);
+
+  document.querySelectorAll('[data-paybill]').forEach(b=>b.addEventListener('click', ()=>{
+    openPayBillSheet(b.dataset.paybill);
+  }));
+  document.querySelectorAll('[data-delbill]').forEach(b=>b.addEventListener('click', async ()=>{
+    state.bills = state.bills.filter(x=>x.id!==b.dataset.delbill);
+    await saveState(); render(); showToast('تم الحذف');
+  }));
+
+  const btnAddCommitment = document.getElementById('btnAddCommitment');
+  if(btnAddCommitment) btnAddCommitment.addEventListener('click', openAddCommitmentSheet);
+
+  document.querySelectorAll('[data-paycommit]').forEach(b=>b.addEventListener('click', ()=>{
+    openPayCommitmentSheet(b.dataset.paycommit);
+  }));
+  document.querySelectorAll('[data-delcommit]').forEach(b=>b.addEventListener('click', async ()=>{
+    state.commitments = state.commitments.filter(x=>x.id!==b.dataset.delcommit);
+    await saveState(); render(); showToast('تم الحذف');
+  }));
+
   document.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', async ()=>{
     const id = b.dataset.del;
     const delEntry = state.expenses.find(e=>e.id===id);
@@ -915,7 +1188,8 @@ function attachHomeEvents(){
   const btnSaveSalary = document.getElementById('btnSaveSalary');
   if(btnSaveSalary) btnSaveSalary.addEventListener('click', async ()=>{
     const v = parseFloat(document.getElementById('salaryInput').value) || 0;
-    state.salary = v;
+    const acc = salaryAccount();
+    if(acc) acc.balance = v;
     await saveState(); render(); showToast('تم حفظ المرتب');
   });
   const btnAddAcc = document.getElementById('btnAddAcc');
@@ -1045,6 +1319,7 @@ auth.onAuthStateChanged(async (user)=>{
     appWrap.innerHTML = '<div class="loading" id="loadingMsg">جاري تحميل بياناتك…</div>';
     await loadState();
     render();
+    checkCommitmentReminders();
   } else {
     currentUser = null;
     ready = false;
@@ -1072,6 +1347,59 @@ function updateOnlineStatus(){
 window.addEventListener('online', updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
 updateOnlineStatus();
+
+// ============================================================
+// تنبيهات الالتزامات الشهرية المتكررة
+// ملحوظة: التنبيه ده بيشتغل بس لما تفتح التطبيق (مش في الخلفية وهو مقفول)
+// عشان المتصفح بيمنع التطبيقات العادية من الاشتغال في الخلفية من غير سيرفر تنبيهات
+// ============================================================
+async function checkCommitmentReminders(){
+  if(!ready || !('Notification' in window)) return;
+  if(Notification.permission !== 'granted') return;
+
+  const todayKey = new Date().toISOString().slice(0,10);
+  const storeKey = 'notifiedCommitments_'+todayKey;
+  let notifiedIds = [];
+  try{ notifiedIds = JSON.parse(localStorage.getItem(storeKey) || '[]'); }catch(e){}
+
+  for(const c of (state.commitments||[])){
+    if(!c.notify) continue;
+    const st = commitmentStatus(c);
+    if(st==='paid' || st==='upcoming') continue;
+    if(notifiedIds.includes(c.id)) continue;
+
+    const due = commitmentDueDateThisMonth(c.dueDay);
+    const dueLabel = due.getDate()+' '+MONTHS_AR[due.getMonth()];
+    const title = st==='overdue' ? `⚠️ اتأخرت على "${c.name}"` : `🔔 قرّب معاد "${c.name}"`;
+    const body = `${fmt(c.amount)} ج.م — المعاد ${dueLabel}`;
+    try{
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, {body, tag:'commit-'+c.id});
+    }catch(e){
+      try{ new Notification(title, {body}); }catch(e2){ console.warn('notify failed', e2); }
+    }
+    notifiedIds.push(c.id);
+  }
+  try{ localStorage.setItem(storeKey, JSON.stringify(notifiedIds)); }catch(e){}
+}
+
+// نعيد الفحص لو المستخدم رجع فاتح التاب بعد ما كان مقفول فترة (زي بعد نص الليل)
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible') checkCommitmentReminders();
+});
+setInterval(checkCommitmentReminders, 1000*60*60*4); // كل 4 ساعات لو التطبيق فاضل مفتوح
+
+// ============================================================
+// تسجيل الـ Service Worker — عشان التطبيق يشتغل من غير نت
+// (لازم ملف sw.js يكون مرفوع في نفس مكان index.html بالظبط)
+// ============================================================
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch((err)=>{
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
 </script>
 </body>
 </html>
