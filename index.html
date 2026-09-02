@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -1003,37 +1004,23 @@ function openEndMonthSheet(){
   const used = totalExpenses();
   const accChecks = state.accounts.map(a=>`
     <label style="display:flex;align-items:center;gap:8px;padding:8px 0;font-size:13px;font-weight:700;">
-      <input type="checkbox" class="endAccChk" data-accid="${a.id}" checked style="width:17px;height:17px;">
-      ${a.name} <span style="color:var(--muted);font-weight:600;">(${fmt(a.balance)} ج.م)</span>
+      <input type="checkbox" class="endAccChk" data-accid="${a.id}" style="width:17px;height:17px;">
+      امسح رصيد "${a.name}" <span style="color:var(--muted);font-weight:600;">(حاليًا ${fmt(a.balance)} ج.م)</span>
     </label>`).join('');
   openSheet(`
     <h3>إنهاء الشهر وأرشفته</h3>
     <div class="field" style="background:var(--card-warm);padding:14px;border-radius:14px;font-size:13px;line-height:1.9;">
-      هيتم حفظ "${state.monthLabel}" في الأرشيف بإجمالي مصروف ${fmt(used)} ج.م، وهيتصفّر العمليات عشان تبدأ شهر جديد. رصيد "المرتب الشهري" الحالي (${fmt(salaryBalance())}) هيفضل زي ما هو إلا لو اخترت ترحّله وتصفّره تحت.
+      هيتم حفظ "${state.monthLabel}" في الأرشيف بإجمالي مصروف ${fmt(used)} ج.م، وهيتصفّر العمليات (قائمة الحركات) عشان تبدأ شهر جديد.
     </div>
     <div class="field">
-      <label>هترحّل إيه في الأرشفة دي؟</label>
-      <div class="rowline">
-        <button class="chip endmodechip sel" data-mode="monthly" type="button">الشهري بس</button>
-        <button class="chip endmodechip" data-mode="all" type="button">الشهري + الحسابات</button>
-      </div>
-    </div>
-    <div class="field" id="endAccArea" style="display:none;">
-      <label>اختار الحسابات اللي عايز ترحّلها وتصفّرها</label>
+      <label>عايز تصفّر رصيد أي حساب مع الأرشفة؟ (اختياري)</label>
+      <div class="catmini" style="margin-bottom:8px;">لو مسحتش أي حساب، رصيده هيفضل زي ما هو ويكمّل للشهر الجديد.</div>
       ${accChecks}
     </div>
     <button class="btn" id="btnConfirmEnd">تأكيد الأرشفة وبدء شهر جديد</button>
     <div class="smalllink" id="btnCancelSheet">إلغاء</div>
   `);
   document.getElementById('btnCancelSheet').addEventListener('click', closeSheet);
-
-  let endMode = 'monthly';
-  document.querySelectorAll('.endmodechip').forEach(b=>b.addEventListener('click', ()=>{
-    document.querySelectorAll('.endmodechip').forEach(x=>x.classList.remove('sel'));
-    b.classList.add('sel');
-    endMode = b.dataset.mode;
-    document.getElementById('endAccArea').style.display = endMode==='all' ? 'block' : 'none';
-  }));
 
   document.getElementById('btnConfirmEnd').addEventListener('click', async ()=>{
     const key = uid();
@@ -1049,14 +1036,12 @@ function openEndMonthSheet(){
     archiveIndex.push({key, label: state.monthLabel, salary: salaryBalance(), totalExpenses: totalExpenses()});
     await saveArchiveIndex();
 
-    if(endMode==='all'){
-      document.querySelectorAll('.endAccChk').forEach(chk=>{
-        if(chk.checked){
-          const acc = state.accounts.find(a=>a.id===chk.dataset.accid);
-          if(acc) acc.balance = 0;
-        }
-      });
-    }
+    document.querySelectorAll('.endAccChk').forEach(chk=>{
+      if(chk.checked){
+        const acc = state.accounts.find(a=>a.id===chk.dataset.accid);
+        if(acc) acc.balance = 0;
+      }
+    });
 
     // المستحقات اللي اتدفعت تتشال، واللي لسه متدفعتش تفضل عشان لسه واجبة
     state.bills = (state.bills||[]).filter(b=>!b.paid);
@@ -1403,4 +1388,3 @@ if('serviceWorker' in navigator){
 </script>
 </body>
 </html>
-
