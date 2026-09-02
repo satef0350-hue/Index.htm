@@ -64,6 +64,8 @@
   .hero .col{flex:1;background:rgba(255,255,255,.06);border-radius:14px;padding:10px 12px;}
   .hero .col .k{font-size:11px;opacity:.7;margin-bottom:4px;}
   .hero .col .v{font-size:16px;font-weight:800;}
+  .hero .quickaddwrap{position:relative;margin-top:14px;display:flex;justify-content:center;}
+  .hero .quickaddwrap .quickaddbtn{background:rgba(255,255,255,.16);width:auto;height:auto;border-radius:20px;padding:8px 20px;font-size:13px;font-weight:800;}
   .plus{color:var(--gold);}
   .minus{color:#E9A98A;}
 
@@ -191,11 +193,12 @@
 
   .archiveitem{
     background:var(--card);border:1px solid var(--line);border-radius:18px;
-    padding:16px;margin-bottom:12px;cursor:pointer;
+    padding:16px;margin-bottom:12px;cursor:pointer;position:relative;
   }
-  .archiveitem .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .archiveitem .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;padding-left:30px;}
   .archiveitem .top b{font-size:15px;}
   .archiveitem .stats{display:flex;gap:16px;font-size:12px;color:var(--muted);font-weight:600;}
+  .archivedel{position:absolute;top:10px;left:8px;z-index:2;}
   .toast{
     position:fixed;bottom:150px;left:50%;transform:translateX(-50%);
     background:var(--green-deep);color:#fff;padding:11px 20px;border-radius:14px;
@@ -469,20 +472,20 @@ function salaryBalance(){
 function totalExpenses(){
   return state.expenses.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount),0);
 }
+function salaryExpensesThisMonth(){
+  return state.expenses.filter(e=>e.type==='expense' && e.account==='salary').reduce((s,e)=>s+Number(e.amount),0);
+}
+function salaryIncomeThisMonth(){
+  return state.expenses.filter(e=>e.type==='income' && e.account==='salary').reduce((s,e)=>s+Number(e.amount),0);
+}
 function totalIncomeExtra(){
-  // مبلغ أي دخل اتضاف لحساب غير "المرتب الشهري" (لأن دخل المرتب نفسه بقى محسوب جوه رصيد حساب المرتب)
+  // مبلغ أي دخل اتضاف لحساب غير "المرتب الشهري" (ده بتاع باقي الحسابات بس، منفصل عن المرتب)
   return state.expenses.filter(e=>e.type==='income' && e.account!=='salary').reduce((s,e)=>s+Number(e.amount),0);
 }
-function totalBudget(){
-  return salaryBalance() + totalIncomeExtra();
-}
-function remaining(){
-  return totalBudget() - totalExpenses();
-}
 function pctUsed(){
-  const b = totalBudget();
-  if(b<=0) return 0;
-  return Math.min(999, Math.round((totalExpenses()/b)*100));
+  const base = salaryIncomeThisMonth() || salaryBalance() || 0;
+  if(base<=0) return 0;
+  return Math.min(999, Math.round((salaryExpensesThisMonth()/base)*100));
 }
 function categoryTotals(){
   const map = {};
@@ -537,7 +540,6 @@ function renderHome(){
   const used = pctUsed();
   const over = used > 100;
   const cats = categoryTotals();
-  const budget = totalBudget();
   const spent = totalExpenses();
 
   let catsHtml = '';
@@ -561,7 +563,8 @@ function renderHome(){
     }).join('');
   }
 
-  const accBalancesHtml = state.accounts.map(a=>`
+  const otherAccounts = state.accounts.filter(a=>a.id!=='salary');
+  const accBalancesHtml = otherAccounts.map(a=>`
     <div class="catrow">
       <div class="catname">${a.name}</div>
       <div class="catamt" style="${Number(a.balance)<0?'color:var(--red);':''}">${fmt(a.balance)} <span style="font-size:11px;color:var(--muted);font-weight:600;">ج.م</span></div>
@@ -570,21 +573,25 @@ function renderHome(){
 
   return `
     <div class="hero">
-      <div class="label">الرصيد المتبقي من ${fmt(budget)} ج.م</div>
-      <div class="big">${fmt(remaining())} ج.م</div>
+      <div class="label">رصيد المرتب الشهري</div>
+      <div class="big">${fmt(salaryBalance())} ج.م</div>
       <div class="row">
-        <div class="col"><div class="k">المرتب الشهري</div><div class="v plus">${fmt(salaryBalance())}</div></div>
-        <div class="col"><div class="k">إجمالي المصروف</div><div class="v minus">${fmt(totalExpenses())}</div></div>
+        <div class="col"><div class="k">دخل المرتب الشهر ده</div><div class="v plus">${fmt(salaryIncomeThisMonth())}</div></div>
+        <div class="col"><div class="k">مصروف من المرتب</div><div class="v minus">${fmt(salaryExpensesThisMonth())}</div></div>
+      </div>
+      <div class="quickaddwrap">
+        <button class="quickaddbtn" data-quickadd="salary" data-quickaddname="المرتب الشهري" title="إضافة فلوس للمرتب">+ إضافة فلوس للمرتب</button>
       </div>
     </div>
 
+    ${otherAccounts.length ? `
     <div class="card">
-      <h2>أرصدة الحسابات</h2>
+      <h2>حسابات تانية (منفصلة عن المرتب)</h2>
       ${accBalancesHtml}
-    </div>
+    </div>` : ''}
 
     <div class="card">
-      <h2>نسبة الاستخدام من الميزانية</h2>
+      <h2>نسبة الاستخدام من المرتب</h2>
       <div class="pct ${over?'over':''}">${used}%</div>
       <div class="barwrap"><div class="bar ${over?'over':''}" style="width:${Math.min(100,used)}%"></div></div>
       <div class="barlabels"><span>بداية الشهر</span><span>نهاية الشهر</span></div>
@@ -823,6 +830,7 @@ function renderArchive(){
   }
   const items = [...archiveIndex].reverse().map(m=>`
     <div class="archiveitem" data-archive="${m.key}">
+      <button class="txdel archivedel" data-delarchive="${m.key}" title="حذف من الأرشيف">✕</button>
       <div class="top"><b>${m.label}</b><span style="font-size:13px;font-weight:800;color:var(--red)">-${fmt(m.totalExpenses)}</span></div>
       <div class="stats">
         <span>المرتب: ${fmt(m.salary)}</span>
@@ -1160,6 +1168,14 @@ function attachHomeEvents(){
   }));
   document.querySelectorAll('[data-archive]').forEach(el=>el.addEventListener('click', ()=>{
     openArchiveDetail(el.dataset.archive);
+  }));
+  document.querySelectorAll('[data-delarchive]').forEach(b=>b.addEventListener('click', async (ev)=>{
+    ev.stopPropagation();
+    const key = b.dataset.delarchive;
+    archiveIndex = archiveIndex.filter(m=>m.key!==key);
+    await saveArchiveIndex();
+    try{ await archiveDocRef(key).delete(); }catch(e){ console.error(e); }
+    render(); showToast('اتحذف الشهر من الأرشيف');
   }));
   document.querySelectorAll('[data-delacc]').forEach(b=>b.addEventListener('click', async ()=>{
     state.accounts = state.accounts.filter(a=>a.id!==b.dataset.delacc);
