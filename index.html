@@ -60,10 +60,10 @@
   }
   .hero .label{font-size:13px;opacity:.75;font-weight:500;position:relative;}
   .hero .big{font-size:38px;font-weight:900;margin:10px 0 18px;position:relative;letter-spacing:-.5px;}
-  .hero .row{display:flex;gap:14px;position:relative;}
-  .hero .col{flex:1;background:rgba(255,255,255,.06);border-radius:14px;padding:10px 12px;}
-  .hero .col .k{font-size:11px;opacity:.7;margin-bottom:4px;}
-  .hero .col .v{font-size:16px;font-weight:800;}
+  .hero .row{display:flex;gap:8px;position:relative;}
+  .hero .col{flex:1;min-width:0;background:rgba(255,255,255,.06);border-radius:14px;padding:9px 8px;}
+  .hero .col .k{font-size:10px;opacity:.7;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .hero .col .v{font-size:14px;font-weight:800;}
   .hero .quickaddwrap{position:relative;margin-top:14px;display:flex;justify-content:center;}
   .hero .quickaddwrap .quickaddbtn{background:rgba(255,255,255,.16);width:auto;height:auto;border-radius:20px;padding:8px 20px;font-size:13px;font-weight:800;}
   .plus{color:var(--gold);}
@@ -578,6 +578,7 @@ function renderHome(){
       <div class="row">
         <div class="col"><div class="k">دخل المرتب الشهر ده</div><div class="v plus">${fmt(salaryIncomeThisMonth())}</div></div>
         <div class="col"><div class="k">مصروف من المرتب</div><div class="v minus">${fmt(salaryExpensesThisMonth())}</div></div>
+        <div class="col"><div class="k">الباقي من المرتب</div><div class="v">${fmt(salaryBalance())}</div></div>
       </div>
       <div class="quickaddwrap">
         <button class="quickaddbtn" data-quickadd="salary" data-quickaddname="المرتب الشهري" title="إضافة فلوس للمرتب">+ إضافة فلوس للمرتب</button>
