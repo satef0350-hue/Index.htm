@@ -1,19 +1,16 @@
 {
-  "name": "ميزانيتي",
-  "short_name": "ميزانيتي",
+  "name": "budget",
+  "short_name": "bdg",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F8F0F6",
   "theme_color": "#1D4A3C",
-  "description": "تطبيق ذكي لتتبع المصروفات والإيرادات",
-  "dir": "rtl",
-  "lang": "ar",
   "icons": [
     {
-      "src": "https://via.placeholder.com/512",
+      "src": "icon.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     }
   ]
 }
+
