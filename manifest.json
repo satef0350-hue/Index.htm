@@ -1,13 +1,19 @@
 {
-  "background_color": "#a00f0f",
-  "dir": "rtl",
-  "display": "standalone",
-  "name": "Budget app",
-  "orientation": "any",
-  "scope": "/",
-  "short_name": "Bdg",
+  "name": "ميزانيتي",
+  "short_name": "ميزانيتي",
   "start_url": "/",
-  "theme_color": "#e1b87a",
-  "description": "تطبيق ذكي لتتبع المصروفات والإيرادات، يساعدك على إدارة أموالك، مراقبة الأموال الداخلة والخارجة بدقة، وحفظ مدخراتك وتنظيم التزاماتك المالية بكل سهولة",
-  "lang": "ar"
+  "display": "standalone",
+  "background_color": "#F8F0F6",
+  "theme_color": "#1D4A3C",
+  "description": "تطبيق ذكي لتتبع المصروفات والإيرادات",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }
