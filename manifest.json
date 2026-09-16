@@ -1,0 +1,13 @@
+{
+  "background_color": "#a00f0f",
+  "dir": "rtl",
+  "display": "standalone",
+  "name": "Budget app",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "Bdg",
+  "start_url": "/",
+  "theme_color": "#e1b87a",
+  "description": "تطبيق ذكي لتتبع المصروفات والإيرادات، يساعدك على إدارة أموالك، مراقبة الأموال الداخلة والخارجة بدقة، وحفظ مدخراتك وتنظيم التزاماتك المالية بكل سهولة",
+  "lang": "ar"
+}
