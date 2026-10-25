@@ -1,8 +1,11 @@
 // Service Worker لتشغيل التطبيق من غير إنترنت
-const CACHE_NAME = 'budget-app-cache-v1';
+const CACHE_NAME = 'budget-app-cache-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
   'https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js',
   'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js',
@@ -26,6 +29,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// استراتيجية: هات من الكاش فورًا (لو موجود) وفي نفس الوقت حدّث الكاش من النت لو متاح
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
@@ -44,6 +48,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// لما المستخدم يدوس على التنبيه، يفتح التطبيق (أو يركّز عليه لو مفتوح بالفعل)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(

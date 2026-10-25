@@ -1,10 +1,17 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <link rel="manifest" href="manifest.json">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
 <title>ميزانيتي</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#1D4A3C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ميزانيتي">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -86,6 +93,8 @@
   .pct.over{color:var(--red);}
 
   .catrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);}
+  .catrow-clickable{cursor:pointer;}
+  .catrow-clickable:active{background:var(--card-warm);border-radius:10px;}
   .catrow:last-child{border-bottom:none;}
   .dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
   .catname{flex:1;font-size:14px;font-weight:700;}
@@ -555,7 +564,7 @@ function renderHome(){
     catsHtml = cats.map(c=>{
       const p = spent>0 ? Math.round((c.amount/spent)*100) : 0;
       return `
-      <div class="catrow">
+      <div class="catrow catrow-clickable" data-catdetail="${c.id}">
         <div class="dot" style="background:${c.color}"></div>
         <div class="catname">${c.name}</div>
         <div class="catamt">${fmt(c.amount)} <span style="font-size:11px;color:var(--muted);font-weight:600;">ج.م</span></div>
@@ -629,6 +638,39 @@ function renderTx(){
     }).join('');
   }
   return `<div class="card"><h2>كل العمليات (${list.length})</h2>${rows}</div>`;
+}
+
+function openCategoryDetailSheet(catId){
+  const cat = state.categories.find(c=>c.id===catId) || {name: state.expenses.find(e=>e.category===catId)?.categoryName || 'الفئة', color:'#9A8C6E'};
+  const items = state.expenses
+    .filter(e=>e.type==='expense' && e.category===catId)
+    .sort((a,b)=> (b.date||'').localeCompare(a.date||'') || b.id.localeCompare(a.id));
+  const total = items.reduce((s,e)=>s+Number(e.amount),0);
+
+  const rows = items.length ? items.map(e=>{
+    const acc = state.accounts.find(a=>a.id===e.account);
+    return `
+    <div class="txrow">
+      <div class="txicon">${catIcon(catId)}</div>
+      <div class="txbody">
+        <div class="txname">${e.note || e.categoryName}</div>
+        <div class="txmeta">${acc?acc.name:''}${e.date?' · '+e.date:''}</div>
+      </div>
+      <div class="txamt minus">- ${fmt(e.amount)}</div>
+    </div>`;
+  }).join('') : `<div class="empty">مفيش عمليات مسجّلة في الفئة دي الشهر ده.</div>`;
+
+  openSheet(`
+    <h3><span class="dot" style="background:${cat.color};display:inline-block;vertical-align:middle;margin-left:8px;"></span>${cat.name}</h3>
+    <div class="field" style="background:var(--card-warm);padding:14px;border-radius:14px;text-align:center;margin-bottom:10px;">
+      <div class="catmini">إجمالي استهلاكك من "${cat.name}" الشهر ده</div>
+      <div style="font-weight:900;font-size:26px;margin-top:4px;color:var(--red);">${fmt(total)} <span style="font-size:14px;color:var(--muted);font-weight:700;">ج.م</span></div>
+    </div>
+    <h3 style="font-size:14px;">العمليات (${items.length})</h3>
+    ${rows}
+    <div class="smalllink" id="btnCancelSheet">إغلاق</div>
+  `);
+  document.getElementById('btnCancelSheet').addEventListener('click', closeSheet);
 }
 
 function catIcon(catId){
@@ -1170,6 +1212,9 @@ function attachHomeEvents(){
   }));
   document.querySelectorAll('[data-archive]').forEach(el=>el.addEventListener('click', ()=>{
     openArchiveDetail(el.dataset.archive);
+  }));
+  document.querySelectorAll('[data-catdetail]').forEach(el=>el.addEventListener('click', ()=>{
+    openCategoryDetailSheet(el.dataset.catdetail);
   }));
   document.querySelectorAll('[data-delarchive]').forEach(b=>b.addEventListener('click', async (ev)=>{
     ev.stopPropagation();
