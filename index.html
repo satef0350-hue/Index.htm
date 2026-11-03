@@ -493,9 +493,15 @@ function totalIncomeExtra(){
   return state.expenses.filter(e=>e.type==='income' && e.account!=='salary').reduce((s,e)=>s+Number(e.amount),0);
 }
 function pctUsed(){
+  const spent = salaryExpensesThisMonth();
   const base = salaryIncomeThisMonth() || salaryBalance() || 0;
-  if(base<=0) return 0;
-  return Math.min(999, Math.round((salaryExpensesThisMonth()/base)*100));
+  const legacy = base>0 ? Math.min(999, Math.round((spent/base)*100)) : 0;
+  // الحساب القديم بيفضل زي ما هو لأي حد نتيجته مظبوطة (100% أو أقل)
+  if(legacy <= 100) return legacy;
+  // لو النتيجة عدّت 100% (زي لما الرصيد الحالي أصغر من المصروف): الفلوس اللي كانت متاحة = الباقي + اللي اتصرف
+  const available = salaryBalance() + spent;
+  if(available<=0) return 999;
+  return Math.min(999, Math.round((spent/available)*100));
 }
 function categoryTotals(){
   const map = {};
