@@ -28,6 +28,11 @@
     --muted:#7C8A83;
     --line:#E7DFCC;
   }
+  html[data-theme="ocean"]{--cream:#F2F6FA;--card:#FAFCFE;--card-warm:#E6EEF6;--green:#1F4E79;--green-deep:#163A5C;--gold:#E0A458;--gold-soft:#F2D6A8;--ink:#1F4E79;--muted:#78879A;--line:#D9E3ED;}
+  html[data-theme="plum"]{--cream:#F5F0F8;--card:#FBF8FD;--card-warm:#EADFF1;--green:#5B3A78;--green-deep:#432A5B;--gold:#E8A93C;--gold-soft:#F4D89A;--ink:#5B3A78;--muted:#8A7F94;--line:#E2D6EA;}
+  html[data-theme="rose"]{--cream:#FBF1F1;--card:#FFF8F7;--card-warm:#F5E1E0;--green:#A8445C;--green-deep:#82324A;--gold:#E8A93C;--gold-soft:#F4D89A;--ink:#8C3550;--muted:#9A8286;--line:#EFD5D3;}
+  html[data-theme="brown"]{--cream:#F7F1E8;--card:#FCF8F2;--card-warm:#EEE3D3;--green:#6B4A2E;--green-deep:#523722;--gold:#D9A441;--gold-soft:#EBCB8C;--ink:#5E4029;--muted:#8F8272;--line:#E4D7C3;}
+  html[data-theme="night"]{--cream:#111A17;--card:#18241F;--card-warm:#20302A;--green:#3E9C78;--green-deep:#1F6B50;--gold:#E8A93C;--gold-soft:#5B4A22;--red:#E0805A;--ink:#E7F0EB;--muted:#8CA197;--line:#2A3B33;}
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;}
   body{
@@ -102,6 +107,14 @@
   .catamt{font-size:14px;font-weight:800;}
   .catpct{font-size:12px;color:var(--muted);width:34px;text-align:left;}
 
+  .themegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;}
+  .themeopt{border:2px solid var(--line);border-radius:16px;padding:12px 6px;background:var(--card);font-family:inherit;font-weight:800;font-size:12px;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .themeopt.sel{border-color:var(--gold);}
+  .themeswatch{width:44px;height:44px;border-radius:50%;box-shadow:0 0 0 1px var(--line);}
+  .alertcard{border-right:4px solid var(--red);}
+  nav.tabbar button{position:relative;}
+  .tabbadge{position:absolute;top:0;left:calc(50% + 6px);background:var(--red);color:#fff;font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 4px;}
+  .hero .quickaddwrap{gap:8px;flex-wrap:wrap;}
   .segbar{display:flex;height:14px;border-radius:20px;overflow:hidden;margin:6px 0 18px;background:var(--card-warm);}
   .segbar>div{height:100%;}
   .quickaddbtn{
@@ -299,6 +312,7 @@
   <button data-tab="bills">
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
     المستحقات
+    <span class="tabbadge" id="billsBadge"></span>
   </button>
   <button data-tab="archive">
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
@@ -366,7 +380,27 @@ let state = {
   monthLabel: '',
   bills: [], // {id, name, amount, note, paid, paidExpenseId}
   commitments: [], // {id, name, amount, dueDay, notify, lastPaidMonth}
+  theme: 'default',
 };
+
+const THEMES = [
+  {id:'default', name:'زيتوني', c1:'#1D4A3C', c2:'#E8A93C'},
+  {id:'ocean',   name:'أزرق',   c1:'#1F4E79', c2:'#E0A458'},
+  {id:'plum',    name:'بنفسجي', c1:'#5B3A78', c2:'#E8A93C'},
+  {id:'rose',    name:'وردي',   c1:'#A8445C', c2:'#E8A93C'},
+  {id:'brown',   name:'بني',    c1:'#6B4A2E', c2:'#D9A441'},
+  {id:'night',   name:'ليلي',   c1:'#111A17', c2:'#3E9C78'},
+];
+function applyTheme(id){
+  if(!THEMES.find(t=>t.id===id)) id='default';
+  if(id==='default') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', id);
+  try{ localStorage.setItem('mizaniti-theme', id); }catch(e){}
+  const col = getComputedStyle(document.documentElement).getPropertyValue('--green').trim();
+  const m = document.querySelector('meta[name="theme-color"]');
+  if(m && col) m.setAttribute('content', col);
+}
+try{ applyTheme(localStorage.getItem('mizaniti-theme')||'default'); }catch(e){}
 let archiveIndex = [];
 let ready = false;
 
@@ -432,8 +466,10 @@ async function loadState(){
         monthLabel: saved.monthLabel ?? currentMonthLabel(),
         bills: saved.bills ?? [],
         commitments: saved.commitments ?? [],
+        theme: saved.theme || (()=>{ try{ return localStorage.getItem('mizaniti-theme'); }catch(e){ return null; } })() || 'default',
       });
       archiveIndex = saved.archiveIndex ?? [];
+      applyTheme(state.theme);
       let sAcc = state.accounts.find(a=>a.id==='salary');
       if(!sAcc){
         // ترحيل: لو مفيش حساب "المرتب الشهري" اتعمل قبل كده، اعمله وحط فيه قيمة المرتب القديمة (لو موجودة)
@@ -461,7 +497,9 @@ async function saveState(){
       archiveIndex: archiveIndex,
       bills: state.bills,
       commitments: state.commitments,
+      theme: state.theme,
     }, {merge:true});
+    syncCommitmentsToSW();
   }
   catch(e){ console.error('save failed', e); showToast('تعذر الحفظ على السحابة، تأكد من الإنترنت'); }
 }
@@ -536,8 +574,13 @@ function render(){
         <h1>ميزانيتي</h1>
         <div class="sub">${state.monthLabel}</div>
       </div>
-      <div class="iconbtn" id="btnEndMonth" title="إنهاء الشهر">
-        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
+      <div style="display:flex;gap:8px;">
+        <div class="iconbtn" id="btnTheme" title="ألوان التطبيق">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.5-.3-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-3.9-4-7.2-9-7.2z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/></svg>
+        </div>
+        <div class="iconbtn" id="btnEndMonth" title="إنهاء الشهر">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
+        </div>
       </div>
     </div>
   `;
@@ -549,6 +592,9 @@ function render(){
   else if(activeTab==='settings') html += renderSettings();
 
   app.innerHTML = html;
+  const nDue = dueAlerts().length;
+  const bb = document.getElementById('billsBadge');
+  if(bb){ bb.textContent = nDue; bb.style.display = nDue ? 'flex' : 'none'; }
   attachHomeEvents();
 }
 
@@ -587,7 +633,23 @@ function renderHome(){
       <button class="quickaddbtn" data-quickadd="${a.id}" data-quickaddname="${a.name}" title="إضافة فلوس">+</button>
     </div>`).join('');
 
+  const alerts = dueAlerts();
+  const alertsHtml = alerts.length ? `
+    <div class="card alertcard">
+      <h2>⏰ مستحقات لازم تدفعها</h2>
+      ${alerts.map(a=>`
+        <div class="billrow">
+          <div class="billbody">
+            <div class="billname">${a.c.name}</div>
+            <div class="billnote">${a.st==='overdue' ? 'متأخر — معاده كان يوم '+a.c.dueDay : (a.days===0 ? 'معاده النهارده' : 'باقي '+a.days+' يوم — يوم '+a.c.dueDay)}</div>
+          </div>
+          <div class="billamt">${fmt(a.c.amount)} <span style="font-size:11px;color:var(--muted);font-weight:600;">ج.م</span></div>
+          <button class="billpaybtn" data-paycommit="${a.c.id}">دفع</button>
+        </div>`).join('')}
+    </div>` : '';
+
   return `
+    ${alertsHtml}
     <div class="hero">
       <div class="label">رصيد المرتب الشهري</div>
       <div class="big">${fmt(salaryBalance())} ج.م</div>
@@ -598,6 +660,7 @@ function renderHome(){
       </div>
       <div class="quickaddwrap">
         <button class="quickaddbtn" data-quickadd="salary" data-quickaddname="المرتب الشهري" title="إضافة فلوس للمرتب">+ إضافة فلوس للمرتب</button>
+        <button class="quickaddbtn" id="btnTransfer" title="تحويل بين الحسابات">⇄ تحويل بين الحسابات</button>
       </div>
     </div>
 
@@ -629,6 +692,18 @@ function renderTx(){
     rows = `<div class="empty">مفيش عمليات مسجّلة لسه.</div>`;
   } else {
     rows = list.map(e=>{
+      if(e.type==='transfer'){
+        return `
+      <div class="txrow">
+        <div class="txicon">🔁</div>
+        <div class="txbody">
+          <div class="txname">${e.note || 'تحويل بين حسابات'}</div>
+          <div class="txmeta">${e.accountName} ← ${e.toAccountName}${e.date?' · '+e.date:''}</div>
+        </div>
+        <div class="txamt" style="color:var(--muted);">⇄ ${fmt(e.amount)}</div>
+        <button class="txdel" data-del="${e.id}">✕</button>
+      </div>`;
+      }
       const isIncome = e.type==='income';
       const acc = state.accounts.find(a=>a.id===e.account);
       return `
@@ -644,6 +719,148 @@ function renderTx(){
     }).join('');
   }
   return `<div class="card"><h2>كل العمليات (${list.length})</h2>${rows}</div>`;
+}
+
+
+// ---------- ألوان التطبيق ----------
+function openThemeSheet(){
+  const opts = THEMES.map(t=>`
+    <button class="themeopt ${state.theme===t.id?'sel':''}" data-theme-id="${t.id}" type="button">
+      <span class="themeswatch" style="background:linear-gradient(135deg,${t.c1} 55%,${t.c2} 55%);"></span>
+      ${t.name}
+    </button>`).join('');
+  openSheet(`
+    <h3>اختار لون التطبيق</h3>
+    <div class="themegrid">${opts}</div>
+    <div class="smalllink" id="btnCancelSheet">إغلاق</div>
+  `);
+  document.getElementById('btnCancelSheet').addEventListener('click', closeSheet);
+  document.querySelectorAll('[data-theme-id]').forEach(b=>b.addEventListener('click', async ()=>{
+    state.theme = b.dataset.themeId;
+    applyTheme(state.theme);
+    await saveState();
+    closeSheet(); render(); showToast('تم تغيير اللون');
+  }));
+}
+
+// ---------- تحويل بين الحسابات ----------
+function openTransferSheet(){
+  if(state.accounts.length<2){ showToast('ضيف حساب تاني من الإعدادات الأول'); return; }
+  const chips = (attr, selId)=>state.accounts.map(a=>`<button class="chip ${a.id===selId?'sel':''}" ${attr}="${a.id}" type="button">${a.name} <span style="opacity:.7;font-weight:600;">(${fmt(a.balance)})</span></button>`).join('');
+  let from = state.accounts[0].id, to = state.accounts[1].id;
+  openSheet(`
+    <h3>تحويل بين الحسابات</h3>
+    <div class="catmini" style="margin-bottom:12px;">التحويل بينقل الفلوس بين حسابينك من غير ما يتحسب مصروف.</div>
+    <div class="field"><label>من حساب</label><div class="chipwrap" id="tfFromWrap">${chips('data-tfrom', from)}</div></div>
+    <div class="field"><label>إلى حساب</label><div class="chipwrap" id="tfToWrap">${chips('data-tto', to)}</div></div>
+    <div class="field"><label>المبلغ (ج.م)</label><input type="number" id="tfAmt" placeholder="0" inputmode="decimal"></div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input type="text" id="tfNote" placeholder="مثال: تحويل للبنك"></div>
+    <button class="btn" id="btnSaveTransfer">تحويل</button>
+    <div class="smalllink" id="btnCancelSheet">إلغاء</div>
+  `);
+  document.getElementById('btnCancelSheet').addEventListener('click', closeSheet);
+  const bind = (attr, wrapId, setter)=>{
+    document.querySelectorAll('#'+wrapId+' .chip').forEach(b=>b.addEventListener('click', ()=>{
+      document.querySelectorAll('#'+wrapId+' .chip').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel'); setter(b.getAttribute(attr));
+    }));
+  };
+  bind('data-tfrom','tfFromWrap', v=>{ from=v; });
+  bind('data-tto','tfToWrap', v=>{ to=v; });
+  document.getElementById('btnSaveTransfer').addEventListener('click', async ()=>{
+    const amt = parseFloat(document.getElementById('tfAmt').value);
+    if(!amt || amt<=0){ showToast('اكتب مبلغ صحيح'); return; }
+    if(from===to){ showToast('اختار حسابين مختلفين'); return; }
+    const a = state.accounts.find(x=>x.id===from), b = state.accounts.find(x=>x.id===to);
+    if(!a || !b) return;
+    const note = document.getElementById('tfNote').value.trim();
+    state.expenses.push({
+      id: uid(), type:'transfer', category:null, categoryName:'تحويل',
+      account: a.id, accountName: a.name, toAccount: b.id, toAccountName: b.name,
+      amount: amt, note, date: new Date().toISOString().slice(0,10),
+    });
+    a.balance = Number(a.balance||0) - amt;
+    b.balance = Number(b.balance||0) + amt;
+    await saveState();
+    closeSheet(); render();
+    showToast(a.balance<0 ? 'تم التحويل — رصيد "'+a.name+'" بقى بالسالب' : 'تم التحويل');
+  });
+}
+
+// ---------- تنبيهات الالتزامات ----------
+function dueAlerts(){
+  const out = [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  for(const c of (state.commitments||[])){
+    const st = commitmentStatus(c);
+    if(st!=='overdue' && st!=='soon') continue;
+    const due = commitmentDueDateThisMonth(c.dueDay); due.setHours(0,0,0,0);
+    out.push({c, st, days: Math.round((due-today)/86400000)});
+  }
+  return out.sort((x,y)=>x.days-y.days);
+}
+
+function notifStatusText(){
+  if(!('Notification' in window)) return 'المتصفح ده مش بيدعم الإشعارات.';
+  if(Notification.permission==='granted') return '✅ الإشعارات مفعّلة على الجهاز ده. اضغطي "تجربة إشعار" للتأكد إنها بتوصل.';
+  if(Notification.permission==='denied') return '❌ الإشعارات مقفولة. فعّليها من إعدادات الموبايل: التطبيقات ← ميزانيتي (أو Chrome) ← الإشعارات، وبعدين ارجعي هنا.';
+  return 'الإشعارات لسه مش مفعّلة. اضغطي "تفعيل الإشعارات" ووافقي لما الموبايل يسألك.';
+}
+
+async function showAppNotification(title, body, tag){
+  const opts = {body, tag, icon:'icon-192.png', badge:'icon-192.png', lang:'ar', dir:'rtl', vibrate:[200,100,200]};
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(title, opts);
+    return true;
+  }catch(e){
+    try{ new Notification(title, {body}); return true; }catch(e2){ console.warn('notify failed', e2); return false; }
+  }
+}
+
+async function enableNotifications(){
+  if(!('Notification' in window)){ showToast('المتصفح مش بيدعم الإشعارات'); return; }
+  try{ await Notification.requestPermission(); }catch(e){}
+  if(Notification.permission==='granted'){
+    registerBackgroundCheck();
+    syncCommitmentsToSW();
+    showToast('تم تفعيل الإشعارات');
+  } else {
+    showToast('لازم توافقي على الإشعارات');
+  }
+  render();
+}
+
+async function testNotification(){
+  if(!('Notification' in window) || Notification.permission!=='granted'){
+    showToast('فعّلي الإشعارات الأول'); return;
+  }
+  const ok = await showAppNotification('🔔 ميزانيتي', 'ده إشعار تجريبي — لو شايفاه يبقى الإشعارات شغالة', 'test');
+  showToast(ok ? 'اتبعت إشعار تجريبي' : 'مقدرتش أبعت الإشعار');
+}
+
+// نسخة من الالتزامات بيقراها الـ Service Worker في الخلفية
+async function syncCommitmentsToSW(){
+  try{
+    if(!('caches' in window)) return;
+    const cache = await caches.open('budget-app-data');
+    const payload = (state.commitments||[]).map(c=>({id:c.id,name:c.name,amount:c.amount,dueDay:c.dueDay,notify:!!c.notify,lastPaidMonth:c.lastPaidMonth||null}));
+    await cache.put(new URL('data-commitments.json', document.baseURI).href,
+      new Response(JSON.stringify(payload),{headers:{'Content-Type':'application/json'}}));
+  }catch(e){ console.warn('sync commitments failed', e); }
+}
+
+// فحص دوري في الخلفية (بيشتغل بس على Chrome أندرويد للتطبيق المثبّت، وتوقيته بيحدده المتصفح)
+async function registerBackgroundCheck(){
+  try{
+    if(!('serviceWorker' in navigator)) return;
+    const reg = await navigator.serviceWorker.ready;
+    if(!('periodicSync' in reg)) return;
+    const st = await navigator.permissions.query({name:'periodic-background-sync'});
+    if(st.state==='granted'){
+      await reg.periodicSync.register('check-commitments', {minInterval: 12*60*60*1000});
+    }
+  }catch(e){ console.warn('periodic sync not available', e); }
 }
 
 function openCategoryDetailSheet(catId){
@@ -908,6 +1125,13 @@ function renderSettings(){
       <h2>الحساب</h2>
       <div class="userbar"><span>الحساب المسجّل دخول:</span> <b>${currentUser?.email || ''}</b></div>
       <button class="btn ghost" id="btnLogout" style="margin-top:10px;">تسجيل الخروج</button>
+    </div>
+
+    <div class="card">
+      <h2>الإشعارات</h2>
+      <div class="catmini" style="margin-bottom:10px;line-height:1.9;">${notifStatusText()}</div>
+      ${('Notification' in window && Notification.permission!=='granted') ? `<button class="btn" id="btnEnableNotif" style="margin-bottom:8px;">تفعيل الإشعارات</button>` : ''}
+      <button class="btn ghost" id="btnTestNotif">تجربة إشعار الآن</button>
     </div>
 
     <div class="card">
@@ -1177,6 +1401,14 @@ function openQuickAddSheet(accId, accName){
 function attachHomeEvents(){
   const endBtn = document.getElementById('btnEndMonth');
   if(endBtn) endBtn.addEventListener('click', openEndMonthSheet);
+  const themeBtn = document.getElementById('btnTheme');
+  if(themeBtn) themeBtn.addEventListener('click', openThemeSheet);
+  const trBtn = document.getElementById('btnTransfer');
+  if(trBtn) trBtn.addEventListener('click', openTransferSheet);
+  const btnEnableNotif = document.getElementById('btnEnableNotif');
+  if(btnEnableNotif) btnEnableNotif.addEventListener('click', enableNotifications);
+  const btnTestNotif = document.getElementById('btnTestNotif');
+  if(btnTestNotif) btnTestNotif.addEventListener('click', testNotification);
 
   document.querySelectorAll('[data-quickadd]').forEach(b=>b.addEventListener('click', ()=>{
     openQuickAddSheet(b.dataset.quickadd, b.dataset.quickaddname);
@@ -1209,7 +1441,11 @@ function attachHomeEvents(){
     const delEntry = state.expenses.find(e=>e.id===id);
     if(delEntry){
       const acc = state.accounts.find(a=>a.id===delEntry.account);
-      if(acc){
+      if(delEntry.type==='transfer'){
+        const toAcc = state.accounts.find(a=>a.id===delEntry.toAccount);
+        if(acc) acc.balance = Number(acc.balance||0) + Number(delEntry.amount);
+        if(toAcc) toAcc.balance = Number(toAcc.balance||0) - Number(delEntry.amount);
+      } else if(acc){
         acc.balance = Number(acc.balance||0) + (delEntry.type==='income' ? -Number(delEntry.amount) : Number(delEntry.amount));
       }
     }
@@ -1409,6 +1645,8 @@ updateOnlineStatus();
 async function checkCommitmentReminders(){
   if(!ready || !('Notification' in window)) return;
   if(Notification.permission !== 'granted') return;
+  registerBackgroundCheck();
+  syncCommitmentsToSW();
 
   const todayKey = new Date().toISOString().slice(0,10);
   const storeKey = 'notifiedCommitments_'+todayKey;
@@ -1425,12 +1663,7 @@ async function checkCommitmentReminders(){
     const dueLabel = due.getDate()+' '+MONTHS_AR[due.getMonth()];
     const title = st==='overdue' ? `⚠️ اتأخرت على "${c.name}"` : `🔔 قرّب معاد "${c.name}"`;
     const body = `${fmt(c.amount)} ج.م — المعاد ${dueLabel}`;
-    try{
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification(title, {body, tag:'commit-'+c.id});
-    }catch(e){
-      try{ new Notification(title, {body}); }catch(e2){ console.warn('notify failed', e2); }
-    }
+    await showAppNotification(title, body, 'commit-'+c.id);
     notifiedIds.push(c.id);
   }
   try{ localStorage.setItem(storeKey, JSON.stringify(notifiedIds)); }catch(e){}
